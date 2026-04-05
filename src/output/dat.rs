@@ -2,7 +2,7 @@
 
 use crate::output::cue::parse_cue_and_hash;
 use crate::systems::detect_rom;
-use crc::{Crc, CRC_32_ISO_HDLC};
+use crc::{CRC_32_ISO_HDLC, Crc};
 use md5::Md5;
 use sha1::{Digest, Sha1};
 use sha2::Sha256;

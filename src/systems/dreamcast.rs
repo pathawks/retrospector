@@ -4,9 +4,9 @@
 //     https://segaretro.org/Dreamcast/Disc_format
 
 use super::helpers::{compute_sha1, non_empty};
-use crate::systems::disc::pvd::{parse_pvd, PrimaryVolumeDescriptor};
+use crate::systems::disc::pvd::{PrimaryVolumeDescriptor, parse_pvd};
 use crate::systems::disc::sega_ip::{
-    dat_region_from_area_codes, is_dreamcast, parse_dreamcast_ip, SegaIpBin,
+    SegaIpBin, dat_region_from_area_codes, is_dreamcast, parse_dreamcast_ip,
 };
 use crate::traits::error::ParseError;
 use crate::traits::rom_hash::RomHash;

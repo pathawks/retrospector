@@ -99,18 +99,19 @@ pub fn analyze(prg_data: &[u8], chr_data: Option<&[u8]>, mapper: &Mapper) -> Nes
     }
 
     // Overdump detection — skip if data is blank (uniform fill is not a meaningful overdump)
-    if prg_blank.is_none() && prg_data.len() > MIN_BLOCK {
-        if let Some(unique) = detect_unique_size(prg_data, MIN_BLOCK) {
-            analysis.prg_unique_bytes = Some(unique);
-        }
+    if prg_blank.is_none()
+        && prg_data.len() > MIN_BLOCK
+        && let Some(unique) = detect_unique_size(prg_data, MIN_BLOCK)
+    {
+        analysis.prg_unique_bytes = Some(unique);
     }
 
-    if let Some(chr) = chr_data {
-        if chr_blank.is_none() && chr.len() > MIN_BLOCK {
-            if let Some(unique) = detect_unique_size(chr, MIN_BLOCK) {
-                analysis.chr_unique_bytes = Some(unique);
-            }
-        }
+    if let Some(chr) = chr_data
+        && chr_blank.is_none()
+        && chr.len() > MIN_BLOCK
+        && let Some(unique) = detect_unique_size(chr, MIN_BLOCK)
+    {
+        analysis.chr_unique_bytes = Some(unique);
     }
 
     // Mapper compatibility checks
@@ -118,13 +119,13 @@ pub fn analyze(prg_data: &[u8], chr_data: Option<&[u8]>, mapper: &Mapper) -> Nes
         let prg_kb = (prg_data.len() / 1024) as u32;
         let chr_kb = chr_data.map(|c| (c.len() / 1024) as u32).unwrap_or(0);
 
-        if let Some(max_prg) = limits.max_prg_kb {
-            if prg_kb > max_prg {
-                analysis.warnings.push(AnalysisWarning::PrgTooLarge {
-                    mapper_max_kb: max_prg,
-                    actual_kb: prg_kb,
-                });
-            }
+        if let Some(max_prg) = limits.max_prg_kb
+            && prg_kb > max_prg
+        {
+            analysis.warnings.push(AnalysisWarning::PrgTooLarge {
+                mapper_max_kb: max_prg,
+                actual_kb: prg_kb,
+            });
         }
 
         if let Some(max_chr) = limits.max_chr_kb {
@@ -410,20 +411,24 @@ mod tests {
         let prg = vec![0u8; 32768];
         let chr = vec![0u8; 8192];
         let result = analyze(&prg, Some(&chr), &Mapper::UxROM);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| matches!(w, AnalysisWarning::UnexpectedChrRom)));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| matches!(w, AnalysisWarning::UnexpectedChrRom))
+        );
     }
 
     #[test]
     fn mapper_prg_too_large_warning() {
         let prg = vec![0u8; 64 * 1024]; // 64KB, NROM max is 32KB
         let result = analyze(&prg, None, &Mapper::NROM);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| matches!(w, AnalysisWarning::PrgTooLarge { .. })));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| matches!(w, AnalysisWarning::PrgTooLarge { .. }))
+        );
     }
 
     #[test]
@@ -445,10 +450,12 @@ mod tests {
                 ines_mapper_number: 999,
             },
         );
-        assert!(result
-            .warnings
-            .iter()
-            .all(|w| !matches!(w, AnalysisWarning::PrgTooLarge { .. })));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .all(|w| !matches!(w, AnalysisWarning::PrgTooLarge { .. }))
+        );
     }
 
     #[test]
@@ -456,10 +463,12 @@ mod tests {
         let prg = vec![0xFFu8; 256 * 1024];
         let chr: Vec<u8> = (0..8192).map(|i| (i % 251) as u8).collect();
         let result = analyze(&prg, Some(&chr), &Mapper::MMC3);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| matches!(w, AnalysisWarning::BlankPrg { fill_byte: 0xFF })));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| matches!(w, AnalysisWarning::BlankPrg { fill_byte: 0xFF }))
+        );
         // Should NOT report overdump for blank data
         assert_eq!(result.prg_unique_bytes, None);
     }
@@ -469,10 +478,12 @@ mod tests {
         let prg: Vec<u8> = (0..32768).map(|i| (i % 251) as u8).collect();
         let chr = vec![0x00u8; 256 * 1024];
         let result = analyze(&prg, Some(&chr), &Mapper::MMC3);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| matches!(w, AnalysisWarning::BlankChr { fill_byte: 0x00 })));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| matches!(w, AnalysisWarning::BlankChr { fill_byte: 0x00 }))
+        );
         assert_eq!(result.chr_unique_bytes, None);
     }
 
@@ -481,10 +492,12 @@ mod tests {
         // All-0xFF PRG should be flagged as blank, not overdump
         let prg = vec![0xFFu8; 32 * 1024];
         let result = analyze(&prg, None, &Mapper::NROM);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| matches!(w, AnalysisWarning::BlankPrg { .. })));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| matches!(w, AnalysisWarning::BlankPrg { .. }))
+        );
         assert_eq!(result.prg_unique_bytes, None);
     }
 }

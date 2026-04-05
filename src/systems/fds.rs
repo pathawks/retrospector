@@ -9,7 +9,7 @@
 use std::fmt;
 
 use super::helpers::compute_sha1;
-use crc::{Crc, CRC_32_ISO_HDLC};
+use crc::{CRC_32_ISO_HDLC, Crc};
 
 use crate::traits::{error::ParseError, rom_hash::RomHash, rominfo::RomInfo};
 

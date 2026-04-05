@@ -3,8 +3,8 @@
 //! This module provides functionality to parse CUE sheets, enrich them with
 //! retrospector analysis data, and serialize them back to valid CUE format.
 
-use crate::systems::disc::{detect_disc, DiscAnalysis};
-use crc::{Crc, CRC_32_ISO_HDLC};
+use crate::systems::disc::{DiscAnalysis, detect_disc};
+use crc::{CRC_32_ISO_HDLC, Crc};
 use md5::Md5;
 use rcue::cue::{Cue, CueFile, Track};
 use sha1::{Digest, Sha1};

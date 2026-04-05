@@ -174,11 +174,7 @@ impl TryFrom<&[u8]> for ColecoVisionInfo {
                 .rev()
                 .collect::<Vec<_>>()
                 .join(" / ");
-            if t.is_empty() {
-                None
-            } else {
-                Some(t)
-            }
+            if t.is_empty() { None } else { Some(t) }
         } else {
             None
         };

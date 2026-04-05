@@ -4,9 +4,9 @@
 
 use super::helpers::{compute_sha1, first_non_empty, non_empty};
 use crate::systems::disc::decode_regions;
-use crate::systems::disc::pvd::{parse_pvd, PrimaryVolumeDescriptor};
+use crate::systems::disc::pvd::{PrimaryVolumeDescriptor, parse_pvd};
 use crate::systems::disc::sector::{
-    detect_sector_format, logical_to_physical, sector_data_offset, SectorFormat, SECTOR_RAW,
+    SECTOR_RAW, SectorFormat, detect_sector_format, logical_to_physical, sector_data_offset,
 };
 use crate::systems::disc::sega_ip::dat_region_from_area_codes;
 use crate::systems::genesis::publisher_from_copyright;

@@ -288,15 +288,15 @@ impl std::fmt::Display for SNESRomInfo {
                 "Possible Trainer Detected ({TRAINER_BYTES} extra bytes in file)",
             )?;
         }
-        if let Some(unique_bytes) = self.unique_rom_bytes {
-            if self.trimmed_checksum == Some(self.stored_checksum) {
-                writeln!(
-                    f,
-                    "Overdump Detected: file contains {} of unique ROM data ({} file)",
-                    format_bits((unique_bytes as u64).saturating_mul(8)),
-                    format_bits(self.file_size.as_u64().saturating_mul(8))
-                )?;
-            }
+        if let Some(unique_bytes) = self.unique_rom_bytes
+            && self.trimmed_checksum == Some(self.stored_checksum)
+        {
+            writeln!(
+                f,
+                "Overdump Detected: file contains {} of unique ROM data ({} file)",
+                format_bits((unique_bytes as u64).saturating_mul(8)),
+                format_bits(self.file_size.as_u64().saturating_mul(8))
+            )?;
         }
 
         Ok(())

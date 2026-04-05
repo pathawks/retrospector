@@ -1,4 +1,4 @@
-use crate::systems::disc::pvd::{has_pvd, parse_pvd, PrimaryVolumeDescriptor};
+use crate::systems::disc::pvd::{PrimaryVolumeDescriptor, has_pvd, parse_pvd};
 use crate::traits::error::ParseError;
 use crate::traits::rominfo::RomInfo;
 

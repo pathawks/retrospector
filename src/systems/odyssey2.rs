@@ -8,7 +8,7 @@ use super::helpers::compute_sha1;
 use crate::traits::{error::ParseError, rom_hash::RomHash, rominfo::RomInfo};
 
 mod opcodes;
-use opcodes::{acc_effect, decode_jmp, instruction_len, is_call, is_jmp, AccEffect};
+use opcodes::{AccEffect, acc_effect, decode_jmp, instruction_len, is_call, is_jmp};
 
 // Odyssey² vector table geometry in cartridge space (byte offsets from cart base).
 const ENTRY_VECTOR_BYTES: usize = 12; // bytes 0..11
@@ -399,10 +399,10 @@ impl std::fmt::Display for MagnavoxOdyssey2Info {
                 None => writeln!(f, "Games: multiple")?,
             }
         }
-        if let Some(entry) = self.reset_entry {
-            if !self.uses_bios_game_select {
-                writeln!(f, "Reset Entry: {:#05X}", entry)?;
-            }
+        if let Some(entry) = self.reset_entry
+            && !self.uses_bios_game_select
+        {
+            writeln!(f, "Reset Entry: {:#05X}", entry)?;
         }
 
         // Bank analysis (only for multi-bank ROMs)
@@ -424,11 +424,11 @@ impl std::fmt::Display for MagnavoxOdyssey2Info {
             }
 
             // Show swapped hash for 2-bank ROMs with non-standard order
-            if let Some(sha1) = &self.swapped_sha1 {
-                if self.boot_bank != expected_boot {
-                    let hex: String = sha1.iter().map(|b| format!("{:02X}", b)).collect();
-                    writeln!(f, "Swapped SHA1: {}", hex)?;
-                }
+            if let Some(sha1) = &self.swapped_sha1
+                && self.boot_bank != expected_boot
+            {
+                let hex: String = sha1.iter().map(|b| format!("{:02X}", b)).collect();
+                writeln!(f, "Swapped SHA1: {}", hex)?;
             }
         }
 

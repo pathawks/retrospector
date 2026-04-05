@@ -116,18 +116,18 @@ fn format_date(raw: &str) -> String {
 
     // Try YYYYMMDD
     let mm = &raw[4..6];
-    if let Ok(month) = mm.parse::<u32>() {
-        if (1..=12).contains(&month) {
-            return format!("{}-{}-{}", &raw[0..4], mm, &raw[6..8]);
-        }
+    if let Ok(month) = mm.parse::<u32>()
+        && (1..=12).contains(&month)
+    {
+        return format!("{}-{}-{}", &raw[0..4], mm, &raw[6..8]);
     }
 
     // Fall back to MMDDYYYY
     let mm = &raw[0..2];
-    if let Ok(month) = mm.parse::<u32>() {
-        if (1..=12).contains(&month) {
-            return format!("{}-{}-{}", &raw[4..8], mm, &raw[2..4]);
-        }
+    if let Ok(month) = mm.parse::<u32>()
+        && (1..=12).contains(&month)
+    {
+        return format!("{}-{}-{}", &raw[4..8], mm, &raw[2..4]);
     }
 
     raw.to_string()
@@ -229,15 +229,15 @@ impl std::fmt::Display for SegaIpBin {
         }
 
         // Dreamcast-only fields
-        if let Some(ref producer) = self.producer {
-            if !producer.is_empty() {
-                writeln!(f, "Producer: {}", producer)?;
-            }
+        if let Some(ref producer) = self.producer
+            && !producer.is_empty()
+        {
+            writeln!(f, "Producer: {}", producer)?;
         }
-        if let Some(ref boot_filename) = self.boot_filename {
-            if !boot_filename.is_empty() {
-                writeln!(f, "Boot File: {}", boot_filename)?;
-            }
+        if let Some(ref boot_filename) = self.boot_filename
+            && !boot_filename.is_empty()
+        {
+            writeln!(f, "Boot File: {}", boot_filename)?;
         }
 
         Ok(())

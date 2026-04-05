@@ -2,7 +2,7 @@
 //   CD-i disc identification via ISO 9660 PVD:
 //     https://en.wikipedia.org/wiki/Philips_CD-i#Technical_specifications
 
-use crate::systems::disc::pvd::{parse_pvd, PrimaryVolumeDescriptor};
+use crate::systems::disc::pvd::{PrimaryVolumeDescriptor, parse_pvd};
 use crate::traits::error::ParseError;
 use crate::traits::rominfo::RomInfo;
 

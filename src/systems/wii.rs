@@ -3,8 +3,8 @@
 //     https://wiibrew.org/wiki/Wii_disc#Header
 
 use crate::systems::disc::nintendo_disc::{
-    dat_region, detect_nintendo_disc, parse_nintendo_disc_header, NintendoDiscHeader,
-    NintendoDiscType,
+    NintendoDiscHeader, NintendoDiscType, dat_region, detect_nintendo_disc,
+    parse_nintendo_disc_header,
 };
 use crate::systems::helpers::{dat_revision, non_empty};
 use crate::traits::error::ParseError;

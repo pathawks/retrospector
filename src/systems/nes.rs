@@ -20,7 +20,7 @@ pub mod timing;
 
 use analysis::NesAnalysis;
 use console_type::ConsoleType;
-use crc::{Crc, CRC_32_ISO_HDLC};
+use crc::{CRC_32_ISO_HDLC, Crc};
 use expansion_device::ExpansionDevice;
 use file_type::FileType;
 use mapper::Mapper;

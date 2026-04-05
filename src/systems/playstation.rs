@@ -3,7 +3,7 @@
 //     https://problemkaputt.de/psx-spx.htm#cdromfilesystemiso9660
 
 use super::helpers::compute_sha1;
-use crate::systems::disc::pvd::{has_pvd, parse_pvd, PrimaryVolumeDescriptor};
+use crate::systems::disc::pvd::{PrimaryVolumeDescriptor, has_pvd, parse_pvd};
 use crate::traits::error::ParseError;
 use crate::traits::rom_hash::RomHash;
 use crate::traits::rominfo::RomInfo;
