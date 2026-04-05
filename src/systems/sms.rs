@@ -72,6 +72,7 @@ pub struct SmsRomInfo {
     pub version: u8,
     pub region_code: u8,
     pub rom_size_code: u8,
+    pub file_size: usize,
     pub stored_checksum: u16,
     pub calculated_checksum: u16,
     pub header_offset: usize,
@@ -152,6 +153,7 @@ fn parse_sms_info(buffer: &[u8]) -> Result<SmsRomInfo, SmsParseError> {
         version,
         region_code,
         rom_size_code,
+        file_size: buffer.len(),
         stored_checksum,
         calculated_checksum,
         header_offset,
@@ -195,29 +197,38 @@ impl std::fmt::Display for SmsRomInfo {
             _ => "Unknown",
         };
 
-        let rom_size: Byte = match self.rom_size_code {
-            SIZE_CODE_256KB => Byte::from(256 * 1024u64), // 256 KB (unused)
-            SIZE_CODE_512KB => Byte::from(512 * 1024u64), // 512 KB (unused)
-            SIZE_CODE_1MB => Byte::from(1024 * 1024u64),  // 1 MB (unused)
-            SIZE_CODE_8KB => Byte::from(8 * 1024u64),     // 8 KB
-            SIZE_CODE_16KB => Byte::from(16 * 1024u64),   // 16 KB
-            SIZE_CODE_32KB => Byte::from(32 * 1024u64),   // 32 KB
-            SIZE_CODE_48KB => Byte::from(48 * 1024u64),   // 48 KB (unused)
-            SIZE_CODE_64KB => Byte::from(64 * 1024u64),   // 64 KB
-            SIZE_CODE_128KB => Byte::from(128 * 1024u64), // 128 KB
-            _ => Byte::from(0u64),
+        let header_rom_size: Option<u64> = match self.rom_size_code {
+            SIZE_CODE_8KB => Some(8 * 1024),
+            SIZE_CODE_16KB => Some(16 * 1024),
+            SIZE_CODE_32KB => Some(32 * 1024),
+            SIZE_CODE_48KB => Some(48 * 1024),
+            SIZE_CODE_64KB => Some(64 * 1024),
+            SIZE_CODE_128KB => Some(128 * 1024),
+            SIZE_CODE_256KB => Some(256 * 1024),
+            SIZE_CODE_512KB => Some(512 * 1024),
+            SIZE_CODE_1MB => Some(1024 * 1024),
+            _ => None,
         };
+        let file_size = Byte::from(self.file_size as u64);
 
         writeln!(f, "Product Code: {}", self.product_code)?;
         writeln!(f, "Region: {}", region_description)?;
         if self.version != 0 {
             writeln!(f, "Version: {}", self.version)?;
         }
-        if rom_size.as_u64() > 0 {
+        writeln!(
+            f,
+            "ROM Size: {}",
+            file_size.get_appropriate_unit(UnitType::Binary)
+        )?;
+        if self.stored_checksum != 0 && header_rom_size.is_some_and(|h| h != self.file_size as u64)
+        {
+            let header_size = Byte::from(header_rom_size.unwrap_or(0));
             writeln!(
                 f,
-                "ROM Size: {}",
-                rom_size.get_appropriate_unit(UnitType::Binary)
+                "Warning: Header declares {} (checksum covers only this range), but file is {}",
+                header_size.get_appropriate_unit(UnitType::Binary),
+                file_size.get_appropriate_unit(UnitType::Binary),
             )?;
         }
         writeln!(f, "Header Location: {:#06X}", self.header_offset)?;
