@@ -384,8 +384,8 @@ mod tests {
     fn no_snes_overdump_for_unique_data() {
         // 64KB of distinct data — no overdump
         let mut data = vec![0u8; 2 * SNES_ROM_MIN_BYTES];
-        for i in 0..data.len() {
-            data[i] = (i.wrapping_mul(2654435761) >> 16) as u8;
+        for (i, byte) in data.iter_mut().enumerate() {
+            *byte = (i.wrapping_mul(2654435761) >> 16) as u8;
         }
         assert_eq!(detect_unique_size(&data, SNES_ROM_MIN_BYTES), None);
         assert_eq!(detect_trailing_padding(&data, SNES_ROM_MIN_BYTES), None);

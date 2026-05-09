@@ -352,8 +352,8 @@ mod tests {
     fn no_overdump_in_unique_data() {
         // Use a hash-like pattern that won't repeat at block boundaries
         let mut data = vec![0u8; 32768];
-        for i in 0..data.len() {
-            data[i] = (i.wrapping_mul(2654435761) >> 16) as u8; // Knuth multiplicative hash
+        for (i, byte) in data.iter_mut().enumerate() {
+            *byte = (i.wrapping_mul(2654435761) >> 16) as u8; // Knuth multiplicative hash
         }
         assert_eq!(detect_unique_size(&data, 8192), None);
     }
