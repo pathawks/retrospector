@@ -76,7 +76,9 @@ impl RomInfo for NdsRomInfo {
             title: non_empty(&self.title),
             region: nintendo_region_dat(self.game_code[3]),
             version: dat_revision(self.version),
-            manufacturer: lookup_nds_licensee(&self.maker_code).map(String::from),
+            manufacturer: lookup_nds_licensee(&self.maker_code)
+                .filter(|&name| name != "None")
+                .map(String::from),
             serial: serial.as_deref().and_then(non_empty),
             machine_id: serial.as_deref().and_then(non_empty),
             ..DatMeta::default()
@@ -264,6 +266,16 @@ mod tests {
             info.capacity = cap;
             assert_eq!(info.rom_size_mib(), None, "capacity {cap}");
         }
+    }
+
+    #[test]
+    fn dat_meta_omits_manufacturer_for_no_publisher_code() {
+        let mut buf = make_header();
+        buf[NDS_MAKER_CODE_START..NDS_MAKER_CODE_END].copy_from_slice(b"00");
+        let crc = NDS_MODBUS.checksum(&buf[..NDS_HEADER_CRC_START]);
+        buf[NDS_HEADER_CRC_START..NDS_HEADER_CRC_END].copy_from_slice(&crc.to_le_bytes());
+        let meta = NdsRomInfo::try_from(buf.as_slice()).unwrap().dat_meta();
+        assert_eq!(meta.manufacturer, None);
     }
 
     #[test]
