@@ -71,7 +71,7 @@ retrospector --output cuesheet game.cue
 - File table listing (PRG, CHR, nametable files with sizes)
 - BCD date decoding (Shōwa, Heisei, and Gregorian eras)
 - PRG and CHR CRC32 checksums
-- FWNES header detection
+- Container detection: raw `.FDS`, fwNES-headered `.FDS`, and Quick Disk `.QD` (with per-block CRCs)
 
 ### Super NES / Super Famicom
 

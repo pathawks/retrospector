@@ -30,7 +30,6 @@ const BLOCK1_MAGIC_END: usize = 0x0F;
 const BLOCK2_TYPE_OFFSET: usize = 0x38;
 const BLOCK2_EXPECTED_TYPE: u8 = 0x02;
 const BLOCK2_FILE_COUNT_OFFSET: usize = 0x39;
-const FILE_TABLE_START_OFFSET: usize = 0x3A;
 
 const BLOCK3_EXPECTED_TYPE: u8 = 0x03;
 const BLOCK3_BYTES: usize = 16;
@@ -43,6 +42,11 @@ const BLOCK3_FILE_TYPE_OFFSET: usize = 15;
 
 const BLOCK4_EXPECTED_TYPE: u8 = 0x04;
 const BLOCK4_TYPE_BYTES: usize = 1;
+
+// Quick Disk (.QD) container: identical block layout to .FDS, but each block is
+// followed by its 2-byte CRC and sides are 65536 bytes instead of 65500.
+const QD_BLOCK_CRC_BYTES: usize = 2;
+const QD_DISK_SIDE_SIZE: usize = 0x10000;
 
 // Disk-info field offsets within block 1.
 const LICENSEE_CODE_OFFSET: usize = 0x0F;
@@ -263,6 +267,50 @@ impl fmt::Display for FdsDate {
     }
 }
 
+/// How an FDS disk image is wrapped in its container file.
+///
+/// All three variants share the same on-disk block layout; they differ only in
+/// an optional leading header and whether each block is followed by its 2-byte
+/// CRC (which also changes the side size).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+enum FdsContainer {
+    /// Headerless raw dump: 65500-byte sides, blocks packed with no CRCs.
+    #[default]
+    Fds,
+    /// fwNES: a 16-byte `FDS\x1A` header, then packed 65500-byte sides.
+    FwNes,
+    /// Quick Disk: 65536-byte sides with a 2-byte CRC after every block.
+    Qd,
+}
+
+impl FdsContainer {
+    /// Bytes of CRC trailing each block within a side (0 unless Quick Disk).
+    const fn block_crc(self) -> usize {
+        match self {
+            Self::Qd => QD_BLOCK_CRC_BYTES,
+            Self::Fds | Self::FwNes => 0,
+        }
+    }
+
+    /// Size of one disk side in bytes.
+    const fn side_size(self) -> usize {
+        match self {
+            Self::Qd => QD_DISK_SIDE_SIZE,
+            Self::Fds | Self::FwNes => DISK_SIDE_SIZE,
+        }
+    }
+}
+
+impl fmt::Display for FdsContainer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fds => write!(f, ".FDS (headerless)"),
+            Self::FwNes => write!(f, "fwNES (.FDS with header)"),
+            Self::Qd => write!(f, "Quick Disk (.QD)"),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Core structs
 // ---------------------------------------------------------------------------
@@ -296,7 +344,7 @@ struct FdsSideInfo {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct FdsRomInfo {
-    has_header: bool,
+    container: FdsContainer,
     sides: Vec<FdsSideInfo>,
     prg_size: u32,
     chr_size: u32,
@@ -323,12 +371,13 @@ impl TryFrom<&[u8]> for FdsRomInfo {
     #[allow(clippy::arithmetic_side_effects)]
     fn try_from(buffer: &[u8]) -> Result<Self, Self::Error> {
         // Detect optional fwNES header (0x46 0x44 0x53 0x1A = "FDS\x1A")
-        let (has_header, data_start) =
-            if buffer.len() >= FWNES_MAGIC.len() && &buffer[0..FWNES_MAGIC.len()] == FWNES_MAGIC {
-                (true, FWNES_HEADER_BYTES)
-            } else {
-                (false, 0usize)
-            };
+        let has_fwnes_header =
+            buffer.len() >= FWNES_MAGIC.len() && &buffer[0..FWNES_MAGIC.len()] == FWNES_MAGIC;
+        let data_start = if has_fwnes_header {
+            FWNES_HEADER_BYTES
+        } else {
+            0
+        };
 
         let disk_data = &buffer[data_start..];
 
@@ -344,9 +393,26 @@ impl TryFrom<&[u8]> for FdsRomInfo {
             return Err(ParseError::MagicNotFound);
         }
 
+        // Identify the container layout. fwNES and raw .FDS pack blocks tightly,
+        // so block 2's type byte sits immediately after block 1 at 0x38. Quick
+        // Disk (.QD) inserts a 2-byte CRC after every block, pushing it to 0x3A.
+        let container = if has_fwnes_header {
+            FdsContainer::FwNes
+        } else if disk_data[BLOCK2_TYPE_OFFSET] == BLOCK2_EXPECTED_TYPE {
+            FdsContainer::Fds
+        } else if disk_data.get(BLOCK2_TYPE_OFFSET + QD_BLOCK_CRC_BYTES)
+            == Some(&BLOCK2_EXPECTED_TYPE)
+        {
+            FdsContainer::Qd
+        } else {
+            FdsContainer::Fds
+        };
+
         let rom_sha1 = compute_sha1(disk_data);
 
-        // Parse all disk sides (each 65500 bytes in the .FDS format)
+        // Parse all disk sides (65500 bytes for .FDS/fwNES, 65536 for .QD).
+        let trailer = container.block_crc();
+        let side_size = container.side_size();
         let mut sides = Vec::new();
         let mut prg_data_all = Vec::new();
         let mut chr_data_all = Vec::new();
@@ -361,20 +427,22 @@ impl TryFrom<&[u8]> for FdsRomInfo {
                 break;
             }
 
-            // Block 2 (file amount) immediately follows block 1 at offset 0x38
-            // (CRCs are omitted from .FDS files)
-            let file_count = if side.len() >= SIDE_MIN_PARSE_BYTES
-                && side[BLOCK2_TYPE_OFFSET] == BLOCK2_EXPECTED_TYPE
+            // Block 2 (file amount) follows block 1, after any block-1 CRC.
+            let block2_type_offset = BLOCK2_TYPE_OFFSET + trailer;
+            let block2_count_offset = BLOCK2_FILE_COUNT_OFFSET + trailer;
+            let file_count = if side.len() > block2_count_offset
+                && side[block2_type_offset] == BLOCK2_EXPECTED_TYPE
             {
-                side[BLOCK2_FILE_COUNT_OFFSET]
+                side[block2_count_offset]
             } else {
                 0
             };
 
             // Parse file entries (Block 3 / Block 4 pairs)
             let mut files = Vec::new();
-            let side_end = side.len().min(DISK_SIDE_SIZE);
-            let mut file_offset = FILE_TABLE_START_OFFSET; // right after Block 2
+            let side_end = side.len().min(side_size);
+            // File table begins after block 2's count byte and its trailing CRC.
+            let mut file_offset = block2_count_offset + 1 + trailer;
 
             for _ in 0..file_count {
                 // Block 3: File Header (16 bytes: 1 type + 15 header)
@@ -394,7 +462,7 @@ impl TryFrom<&[u8]> for FdsRomInfo {
                     side[file_offset + BLOCK3_FILE_SIZE_HIGH_OFFSET],
                 ]);
                 let file_type = FdsFileKind::from_byte(side[file_offset + BLOCK3_FILE_TYPE_OFFSET]);
-                file_offset += BLOCK3_BYTES;
+                file_offset += BLOCK3_BYTES + trailer;
 
                 // Block 4: File Data (1 type byte + file_size data bytes)
                 if file_offset + BLOCK4_TYPE_BYTES + file_size as usize > side_end {
@@ -426,7 +494,7 @@ impl TryFrom<&[u8]> for FdsRomInfo {
                     sha1,
                 });
 
-                file_offset += BLOCK4_TYPE_BYTES + file_size as usize;
+                file_offset += BLOCK4_TYPE_BYTES + file_size as usize + trailer;
             }
 
             sides.push(FdsSideInfo {
@@ -457,7 +525,7 @@ impl TryFrom<&[u8]> for FdsRomInfo {
                 files,
             });
 
-            offset += DISK_SIDE_SIZE;
+            offset += side_size;
         }
 
         if sides.is_empty() {
@@ -475,7 +543,7 @@ impl TryFrom<&[u8]> for FdsRomInfo {
         };
 
         Ok(FdsRomInfo {
-            has_header,
+            container,
             sides,
             prg_size,
             chr_size,
@@ -547,11 +615,7 @@ impl std::fmt::Display for FdsRomInfo {
             writeln!(f, "Rewrite Date: {}", first.rewrite_date)?;
         }
 
-        if self.has_header {
-            writeln!(f, "File Format: fwNES (.FDS with header)")?;
-        } else {
-            writeln!(f, "File Format: .FDS (headerless)")?;
-        }
+        writeln!(f, "File Format: {}", self.container)?;
 
         writeln!(f, "{}", self as &dyn RomHash)
     }
@@ -575,5 +639,99 @@ fn parse_fds_year(bcd_byte: u8) -> u16 {
     } else {
         // Heisei era (Heisei 1 = 1989, year = 1988 + val)
         1988 + val
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a single-side disk image containing exactly one file, entirely
+    /// from synthetic bytes (no commercial ROM data).
+    ///
+    /// `trailer` is the per-block CRC size: 0 for .FDS, 2 for .QD.
+    #[allow(clippy::arithmetic_side_effects)]
+    fn build_single_file_disk(trailer: usize, name: &[u8; 8], kind: u8, data: &[u8]) -> Vec<u8> {
+        let side_size = if trailer == 0 {
+            DISK_SIDE_SIZE
+        } else {
+            QD_DISK_SIDE_SIZE
+        };
+        let mut disk = vec![0u8; side_size];
+
+        // Block 1: disk info (type byte + Nintendo magic; other fields left 0).
+        disk[BLOCK1_TYPE_OFFSET] = BLOCK1_EXPECTED_TYPE;
+        disk[BLOCK1_MAGIC_START..BLOCK1_MAGIC_END].copy_from_slice(NINTENDO_HVC);
+
+        // Block 2: file amount (one file).
+        let block2 = BLOCK2_TYPE_OFFSET + trailer;
+        disk[block2] = BLOCK2_EXPECTED_TYPE;
+        disk[block2 + 1] = 1;
+
+        // Block 3: file header.
+        let block3 = block2 + 2 + trailer;
+        disk[block3] = BLOCK3_EXPECTED_TYPE;
+        disk[block3 + BLOCK3_FILE_NAME_START..block3 + BLOCK3_FILE_NAME_END].copy_from_slice(name);
+        let [size_lo, size_hi] = (data.len() as u16).to_le_bytes();
+        disk[block3 + BLOCK3_FILE_SIZE_LOW_OFFSET] = size_lo;
+        disk[block3 + BLOCK3_FILE_SIZE_HIGH_OFFSET] = size_hi;
+        disk[block3 + BLOCK3_FILE_TYPE_OFFSET] = kind;
+
+        // Block 4: file data.
+        let block4 = block3 + BLOCK3_BYTES + trailer;
+        disk[block4] = BLOCK4_EXPECTED_TYPE;
+        disk[block4 + BLOCK4_TYPE_BYTES..block4 + BLOCK4_TYPE_BYTES + data.len()]
+            .copy_from_slice(data);
+
+        disk
+    }
+
+    #[test]
+    fn parses_quick_disk_with_block_crcs() {
+        let payload = [0xDE, 0xAD, 0xBE, 0xEF];
+        let disk = build_single_file_disk(QD_BLOCK_CRC_BYTES, b"TESTPRG-", 0, &payload);
+
+        let info = FdsRomInfo::try_from(disk.as_slice()).expect("QD disk should parse");
+
+        assert_eq!(info.container, FdsContainer::Qd);
+        assert_eq!(info.sides.len(), 1);
+        assert_eq!(info.sides[0].file_count, 1);
+
+        let file = &info.sides[0].files[0];
+        assert_eq!(&file.file_name, b"TESTPRG-");
+        assert_eq!(file.file_size as usize, payload.len());
+        assert!(file.file_kind.is_program());
+        assert_eq!(info.prg_size as usize, payload.len());
+    }
+
+    #[test]
+    fn quick_disk_reports_qd_file_format() {
+        let disk = build_single_file_disk(QD_BLOCK_CRC_BYTES, b"FORMATCK", 0, &[0x00]);
+        let info = FdsRomInfo::try_from(disk.as_slice()).expect("QD disk should parse");
+        assert!(info.to_string().contains("File Format: Quick Disk (.QD)"));
+    }
+
+    #[test]
+    fn qd_and_fds_extract_identical_file_data() {
+        let payload = [0x01, 0x23, 0x45, 0x67, 0x89];
+        let fds = build_single_file_disk(0, b"SAMEDATA", 0, &payload);
+        let qd = build_single_file_disk(QD_BLOCK_CRC_BYTES, b"SAMEDATA", 0, &payload);
+
+        let fds_info = FdsRomInfo::try_from(fds.as_slice()).expect("FDS disk should parse");
+        let qd_info = FdsRomInfo::try_from(qd.as_slice()).expect("QD disk should parse");
+
+        assert_eq!(fds_info.container, FdsContainer::Fds);
+        assert_eq!(qd_info.container, FdsContainer::Qd);
+
+        // Different containers, identical extracted payload.
+        assert_eq!(fds_info.prg_crc32, qd_info.prg_crc32);
+        assert_eq!(
+            fds_info.sides[0].files[0].crc32,
+            qd_info.sides[0].files[0].crc32
+        );
+        assert_eq!(
+            fds_info.sides[0].files[0].sha1,
+            qd_info.sides[0].files[0].sha1
+        );
     }
 }
