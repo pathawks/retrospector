@@ -370,9 +370,11 @@ impl TryFrom<&[u8]> for FdsRomInfo {
 
     #[allow(clippy::arithmetic_side_effects)]
     fn try_from(buffer: &[u8]) -> Result<Self, Self::Error> {
-        // Detect optional fwNES header (0x46 0x44 0x53 0x1A = "FDS\x1A")
+        // Detect optional fwNES header (0x46 0x44 0x53 0x1A = "FDS\x1A").
+        // Require the whole 16-byte header, not just the magic, so a
+        // truncated file can't send data_start past the end of the buffer.
         let has_fwnes_header =
-            buffer.len() >= FWNES_MAGIC.len() && &buffer[0..FWNES_MAGIC.len()] == FWNES_MAGIC;
+            buffer.len() >= FWNES_HEADER_BYTES && buffer.starts_with(FWNES_MAGIC);
         let data_start = if has_fwnes_header {
             FWNES_HEADER_BYTES
         } else {
@@ -709,6 +711,26 @@ mod tests {
         let disk = build_single_file_disk(QD_BLOCK_CRC_BYTES, b"FORMATCK", 0, &[0x00]);
         let info = FdsRomInfo::try_from(disk.as_slice()).expect("QD disk should parse");
         assert!(info.to_string().contains("File Format: Quick Disk (.QD)"));
+    }
+
+    #[test]
+    fn truncated_fwnes_magic_fails_cleanly() {
+        // Shorter than the 16-byte fwNES header: must not panic slicing past
+        // the end of the buffer.
+        let mut short = FWNES_MAGIC.to_vec();
+        short.push(0x00);
+        assert_eq!(
+            FdsRomInfo::try_from(short.as_slice()),
+            Err(ParseError::BufferTooSmall)
+        );
+
+        // Exactly the header and nothing else: no disk data to parse.
+        let mut header_only = FWNES_MAGIC.to_vec();
+        header_only.resize(FWNES_HEADER_BYTES, 0x00);
+        assert_eq!(
+            FdsRomInfo::try_from(header_only.as_slice()),
+            Err(ParseError::BufferTooSmall)
+        );
     }
 
     #[test]
