@@ -5,6 +5,7 @@
 //     https://datasheetspdf.com/pdf/509798/Intel/8048/1
 
 use super::helpers::compute_sha1;
+use crate::output::hash::format_sha1;
 use crate::traits::{error::ParseError, rom_hash::RomHash, rominfo::RomInfo};
 
 mod opcodes;
@@ -427,8 +428,7 @@ impl std::fmt::Display for MagnavoxOdyssey2Info {
             if let Some(sha1) = &self.swapped_sha1
                 && self.boot_bank != expected_boot
             {
-                let hex: String = sha1.iter().map(|b| format!("{:02X}", b)).collect();
-                writeln!(f, "Swapped SHA1: {}", hex)?;
+                writeln!(f, "Swapped SHA1: {}", format_sha1(sha1))?;
             }
         }
 

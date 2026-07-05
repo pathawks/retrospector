@@ -10,7 +10,7 @@ use super::iso::IsoImage;
 use super::playstation::PlaystationDisc;
 use super::saturn::SaturnDisc;
 use super::segacd::SegaCdDisc;
-use crate::output::cue::format_sha1;
+use crate::output::hash::format_sha1;
 use crate::traits::rom_hash::RomHash;
 use crate::traits::rominfo::RomInfo;
 use crate::traits::title::Title;

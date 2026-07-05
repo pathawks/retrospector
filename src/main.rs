@@ -1,5 +1,5 @@
 use clap::Parser;
-use retrospector::output::cue::{format_sha1, parse_cue_and_hash, process_cuesheet};
+use retrospector::output::cue::{parse_cue_and_hash, process_cuesheet};
 use retrospector::output::dat;
 use retrospector::systems;
 use std::fs::File;
@@ -176,7 +176,7 @@ fn process_file(path: &Path, system: Option<&str>) -> io::Result<()> {
                     "  Track {:>2} ({}): {} ({} bytes)",
                     track.number,
                     track.format,
-                    format_sha1(&track.sha1),
+                    track.hashes.sha1_hex(),
                     track.size
                 );
             }

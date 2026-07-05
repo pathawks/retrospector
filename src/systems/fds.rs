@@ -9,6 +9,7 @@
 use std::fmt;
 
 use super::helpers::compute_sha1;
+use crate::output::hash::format_sha1;
 use crc::{CRC_32_ISO_HDLC, Crc};
 
 use crate::traits::{error::ParseError, rom_hash::RomHash, rominfo::RomInfo};
@@ -594,11 +595,15 @@ impl std::fmt::Display for FdsRomInfo {
             for file in &side.files {
                 let name = String::from_utf8_lossy(&file.file_name);
                 let name = name.trim_end_matches('\0');
-                let sha1_hex: String = file.sha1.iter().map(|b| format!("{:02X}", b)).collect();
                 writeln!(
                     f,
                     "    File {:2}: {:<8} ({})  {:5} bytes  CRC32: {:08X}  SHA1: {}",
-                    file.file_number, name, file.file_kind, file.file_size, file.crc32, sha1_hex
+                    file.file_number,
+                    name,
+                    file.file_kind,
+                    file.file_size,
+                    file.crc32,
+                    format_sha1(&file.sha1)
                 )?;
             }
         }

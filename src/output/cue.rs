@@ -3,12 +3,10 @@
 //! This module provides functionality to parse CUE sheets, enrich them with
 //! retrospector analysis data, and serialize them back to valid CUE format.
 
+pub use crate::output::hash::format_sha1;
+use crate::output::hash::{Hashes, compute_hashes};
 use crate::systems::disc::{DiscAnalysis, detect_disc};
-use crc::{CRC_32_ISO_HDLC, Crc};
-use md5::Md5;
 use rcue::cue::{Cue, CueFile, Track};
-use sha1::{Digest, Sha1};
-use sha2::Sha256;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read};
@@ -26,17 +24,9 @@ pub struct TrackAnalysis {
 pub struct TrackHash {
     pub number: String,
     pub format: String,
-    pub crc32: u32,
-    pub md5: [u8; 16],
-    pub sha1: [u8; 20],
-    pub sha256: [u8; 32],
+    pub hashes: Hashes,
     pub size: usize,
     pub isrc: Option<String>,
-}
-
-/// Format SHA1 hash as hex string
-pub fn format_sha1(hash: &[u8; 20]) -> String {
-    hash.iter().map(|b| format!("{:02X}", b)).collect()
 }
 
 /// Sector size based on track format
@@ -137,35 +127,10 @@ pub fn parse_cue_and_hash(cue_path: &Path) -> io::Result<(Vec<u8>, Vec<TrackHash
 
             if start < end {
                 let track_data = &bin_data[start..end];
-
-                let crc_algo = Crc::<u32>::new(&CRC_32_ISO_HDLC);
-                let crc32 = crc_algo.checksum(track_data);
-
-                let md5: [u8; 16] = {
-                    let mut h = Md5::new();
-                    h.update(track_data);
-                    h.finalize().into()
-                };
-
-                let sha1: [u8; 20] = {
-                    let mut h = Sha1::new();
-                    h.update(track_data);
-                    h.finalize().into()
-                };
-
-                let sha256: [u8; 32] = {
-                    let mut h = Sha256::new();
-                    h.update(track_data);
-                    h.finalize().into()
-                };
-
                 track_hashes.push(TrackHash {
                     number: track.no.clone(),
                     format: track.format.clone(),
-                    crc32,
-                    md5,
-                    sha1,
-                    sha256,
+                    hashes: compute_hashes(track_data),
                     size: end - start,
                     isrc: track.isrc.clone(),
                 });
@@ -367,7 +332,7 @@ pub fn process_cuesheet(path: &Path) -> io::Result<()> {
         enriched.track_analyses.insert(
             track.number.clone(),
             TrackAnalysis {
-                sha1: format_sha1(&track.sha1),
+                sha1: track.hashes.sha1_hex(),
                 size: track.size,
             },
         );

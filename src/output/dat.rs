@@ -1,11 +1,9 @@
 //! No-Intro/Logiqx XML DAT output module for retrospector
 
 use crate::output::cue::parse_cue_and_hash;
+use crate::output::hash::{Hashes, compute_hashes, hex_upper_spaced};
 use crate::systems::detect_rom;
-use crc::{CRC_32_ISO_HDLC, Crc};
-use md5::Md5;
-use sha1::{Digest, Sha1};
-use sha2::Sha256;
+use crate::traits::rominfo::DatMeta;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
@@ -13,10 +11,7 @@ use std::path::Path;
 pub struct RomEntry {
     pub name: String,
     pub size: usize,
-    pub crc32: u32,
-    pub md5: [u8; 16],
-    pub sha1: [u8; 20],
-    pub sha256: [u8; 32],
+    pub hashes: Hashes,
     pub header: Option<[u8; 16]>,
     pub serial: Option<String>,
 }
@@ -41,29 +36,14 @@ pub struct GameEntry {
     pub system: Option<String>,
 }
 
-fn compute_hashes(data: &[u8]) -> (u32, [u8; 16], [u8; 20], [u8; 32]) {
-    let crc_algo = Crc::<u32>::new(&CRC_32_ISO_HDLC);
-    let crc32 = crc_algo.checksum(data);
-
-    let md5: [u8; 16] = {
-        let mut h = Md5::new();
-        h.update(data);
-        h.finalize().into()
-    };
-
-    let sha1: [u8; 20] = {
-        let mut h = Sha1::new();
-        h.update(data);
-        h.finalize().into()
-    };
-
-    let sha256: [u8; 32] = {
-        let mut h = Sha256::new();
-        h.update(data);
-        h.finalize().into()
-    };
-
-    (crc32, md5, sha1, sha256)
+struct GameMetadata {
+    name: String,
+    description: String,
+    year: Option<String>,
+    manufacturer: Option<String>,
+    releases: Vec<ReleaseEntry>,
+    system: Option<String>,
+    serial: Option<String>,
 }
 
 /// Build the canonical game name for `<game name="">`.
@@ -88,6 +68,86 @@ fn build_game_name(
     name
 }
 
+fn detect_game_metadata(stem: &str, data: &[u8]) -> GameMetadata {
+    let (meta, system) = detect_rom(data)
+        .map(|info| {
+            let system = info.console().to_string();
+            let meta = info.dat_meta();
+            (meta, Some(system))
+        })
+        .unwrap_or_default();
+
+    game_metadata_from_dat_meta(stem, meta, system)
+}
+
+fn game_metadata_from_dat_meta(stem: &str, meta: DatMeta, system: Option<String>) -> GameMetadata {
+    let description = build_game_name(
+        stem,
+        meta.title.as_deref(),
+        meta.region.as_deref(),
+        meta.version.as_deref(),
+    );
+    let name = meta
+        .machine_id
+        .clone()
+        .unwrap_or_else(|| description.clone());
+    let releases = meta
+        .region
+        .iter()
+        .map(|r| ReleaseEntry {
+            region: r.clone(),
+            date: meta.date.clone(),
+        })
+        .collect();
+    let year = meta
+        .date
+        .as_deref()
+        .and_then(|d| d.get(..4))
+        .map(String::from);
+
+    GameMetadata {
+        name,
+        description,
+        year,
+        manufacturer: meta.manufacturer,
+        releases,
+        system,
+        serial: meta.serial,
+    }
+}
+
+fn game_entry(metadata: GameMetadata, roms: Vec<RomEntry>) -> GameEntry {
+    GameEntry {
+        name: metadata.name,
+        description: metadata.description,
+        year: metadata.year,
+        manufacturer: metadata.manufacturer,
+        releases: metadata.releases,
+        roms,
+        system: metadata.system,
+    }
+}
+
+fn nes_header(data: &[u8]) -> Option<[u8; 16]> {
+    if data.len() >= 16 && data[..4] == [0x4E, 0x45, 0x53, 0x1A] {
+        let mut header = [0u8; 16];
+        header.copy_from_slice(&data[..16]);
+        Some(header)
+    } else {
+        None
+    }
+}
+
+fn rom_entry(name: String, data: &[u8], serial: Option<String>) -> RomEntry {
+    RomEntry {
+        name,
+        size: data.len(),
+        hashes: compute_hashes(data),
+        header: nes_header(data),
+        serial,
+    }
+}
+
 pub fn collect_games(path: &Path) -> io::Result<Vec<GameEntry>> {
     let stem = path
         .file_stem()
@@ -101,43 +161,8 @@ pub fn collect_games(path: &Path) -> io::Result<Vec<GameEntry>> {
 
     if ext.as_deref() == Some("cue") {
         let (data, track_hashes, _cue) = parse_cue_and_hash(path)?;
-
-        // Attempt system detection on the combined disc image data
-        let (meta, system) = detect_rom(&data)
-            .map(|info| {
-                let system = info.console().to_string();
-                let meta = info.dat_meta();
-                (meta, Some(system))
-            })
-            .unwrap_or_default();
-
-        let title_name = build_game_name(
-            stem,
-            meta.title.as_deref(),
-            meta.region.as_deref(),
-            meta.version.as_deref(),
-        );
-        let name = meta
-            .machine_id
-            .clone()
-            .unwrap_or_else(|| title_name.clone());
-
-        let releases = meta
-            .region
-            .iter()
-            .map(|r| ReleaseEntry {
-                region: r.clone(),
-                date: meta.date.clone(),
-            })
-            .collect();
-
-        let year = meta
-            .date
-            .as_deref()
-            .and_then(|d| d.get(..4))
-            .map(String::from);
-
-        let serial = meta.serial;
+        let metadata = detect_game_metadata(stem, &data);
+        let serial = metadata.serial.clone();
 
         let roms = track_hashes
             .iter()
@@ -147,25 +172,14 @@ pub fn collect_games(path: &Path) -> io::Result<Vec<GameEntry>> {
                 RomEntry {
                     name: format!("Track {:02}.bin", track_num),
                     size: track.size,
-                    crc32: track.crc32,
-                    md5: track.md5,
-                    sha1: track.sha1,
-                    sha256: track.sha256,
+                    hashes: track.hashes,
                     header: None,
                     serial: if i == 0 { serial.clone() } else { None },
                 }
             })
             .collect();
 
-        Ok(vec![GameEntry {
-            name,
-            description: title_name,
-            year,
-            manufacturer: meta.manufacturer,
-            releases,
-            roms,
-            system,
-        }])
+        Ok(vec![game_entry(metadata, roms)])
     } else {
         let mut data = Vec::new();
         File::open(path)?.read_to_end(&mut data)?;
@@ -176,71 +190,10 @@ pub fn collect_games(path: &Path) -> io::Result<Vec<GameEntry>> {
             .unwrap_or("Unknown")
             .to_string();
 
-        // Attempt system detection
-        let (meta, system) = detect_rom(&data)
-            .map(|info| {
-                let system = info.console().to_string();
-                let meta = info.dat_meta();
-                (meta, Some(system))
-            })
-            .unwrap_or_default();
+        let metadata = detect_game_metadata(stem, &data);
+        let rom = rom_entry(file_name, &data, metadata.serial.clone());
 
-        let title_name = build_game_name(
-            stem,
-            meta.title.as_deref(),
-            meta.region.as_deref(),
-            meta.version.as_deref(),
-        );
-        let name = meta
-            .machine_id
-            .clone()
-            .unwrap_or_else(|| title_name.clone());
-
-        let releases = meta
-            .region
-            .iter()
-            .map(|r| ReleaseEntry {
-                region: r.clone(),
-                date: meta.date.clone(),
-            })
-            .collect();
-
-        let year = meta
-            .date
-            .as_deref()
-            .and_then(|d| d.get(..4))
-            .map(String::from);
-
-        let (crc32, md5, sha1, sha256) = compute_hashes(&data);
-
-        let header = if data.len() >= 16 && data[..4] == [0x4E, 0x45, 0x53, 0x1A] {
-            let mut h = [0u8; 16];
-            h.copy_from_slice(&data[..16]);
-            Some(h)
-        } else {
-            None
-        };
-
-        let rom = RomEntry {
-            name: file_name,
-            size: data.len(),
-            crc32,
-            md5,
-            sha1,
-            sha256,
-            header,
-            serial: meta.serial,
-        };
-
-        Ok(vec![GameEntry {
-            name,
-            description: title_name,
-            year,
-            manufacturer: meta.manufacturer,
-            releases,
-            roms: vec![rom],
-            system,
-        }])
+        Ok(vec![game_entry(metadata, vec![rom])])
     }
 }
 
@@ -307,39 +260,16 @@ pub fn serialize_dat(games: &[GameEntry]) -> String {
         }
 
         for rom in &game.roms {
-            let crc_hex = format!("{:08x}", rom.crc32);
-            let md5_hex: String = rom.md5.iter().map(|b| format!("{:02x}", b)).collect();
-            let sha1_hex: String = rom.sha1.iter().map(|b| format!("{:02x}", b)).collect();
-            let sha256_hex: String = rom.sha256.iter().map(|b| format!("{:02x}", b)).collect();
-
-            let header_attr = rom
-                .header
-                .map(|h| {
-                    let hex: String = h
-                        .iter()
-                        .map(|b| format!("{:02X}", b))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    format!(" header=\"{}\"", hex)
-                })
-                .unwrap_or_default();
-
-            let serial_attr = rom
-                .serial
-                .as_deref()
-                .map(|s| format!(" serial=\"{}\"", xml_escape(s)))
-                .unwrap_or_default();
-
             out.push_str(&format!(
                 "\t\t<rom name=\"{}\" size=\"{}\" crc=\"{}\" md5=\"{}\" sha1=\"{}\" sha256=\"{}\"{}{}/>\n",
                 xml_escape(&rom.name),
                 rom.size,
-                crc_hex,
-                md5_hex,
-                sha1_hex,
-                sha256_hex,
-                header_attr,
-                serial_attr,
+                rom.hashes.crc32_hex_lower(),
+                rom.hashes.md5_hex_lower(),
+                rom.hashes.sha1_hex_lower(),
+                rom.hashes.sha256_hex_lower(),
+                header_attr(rom),
+                serial_attr(rom),
             ));
         }
 
@@ -393,30 +323,14 @@ pub fn serialize_mamedat(games: &[GameEntry]) -> String {
         ));
 
         for rom in &game.roms {
-            let crc_hex = format!("{:08x}", rom.crc32);
-            let md5_hex: String = rom.md5.iter().map(|b| format!("{:02x}", b)).collect();
-            let sha1_hex: String = rom.sha1.iter().map(|b| format!("{:02x}", b)).collect();
-
-            let header_attr = rom
-                .header
-                .map(|h| {
-                    let hex: String = h
-                        .iter()
-                        .map(|b| format!("{:02X}", b))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    format!(" header=\"{}\"", hex)
-                })
-                .unwrap_or_default();
-
             out.push_str(&format!(
                 "\t\t<rom name=\"{}\" size=\"{}\" crc=\"{}\" md5=\"{}\" sha1=\"{}\"{}/>\n",
                 xml_escape(&rom.name),
                 rom.size,
-                crc_hex,
-                md5_hex,
-                sha1_hex,
-                header_attr,
+                rom.hashes.crc32_hex_lower(),
+                rom.hashes.md5_hex_lower(),
+                rom.hashes.sha1_hex_lower(),
+                header_attr(rom),
             ));
         }
 
@@ -425,4 +339,17 @@ pub fn serialize_mamedat(games: &[GameEntry]) -> String {
 
     out.push_str("</datafile>\n");
     out
+}
+
+fn header_attr(rom: &RomEntry) -> String {
+    rom.header
+        .map(|header| format!(" header=\"{}\"", hex_upper_spaced(&header)))
+        .unwrap_or_default()
+}
+
+fn serial_attr(rom: &RomEntry) -> String {
+    rom.serial
+        .as_deref()
+        .map(|serial| format!(" serial=\"{}\"", xml_escape(serial)))
+        .unwrap_or_default()
 }
