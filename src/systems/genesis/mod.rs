@@ -224,8 +224,10 @@ fn parse_sega_rom(raw_buffer: &[u8]) -> io::Result<SegaRomInfo> {
     // Calculate SHA1 of entire ROM
     let rom_sha1 = compute_sha1(raw_buffer);
 
+    // End address is stored, so ROM size is end + 1. Widen before adding so a
+    // malformed 0xFFFFFFFF end address can't overflow (panics under overflow-checks).
     let rom_size: usize =
-        (BigEndian::read_u32(&raw_buffer[ROM_SIZE_START..ROM_SIZE_END]) + 1) as usize;
+        (BigEndian::read_u32(&raw_buffer[ROM_SIZE_START..ROM_SIZE_END]) as usize).saturating_add(1);
 
     // Stored checksum field at 0x18E..0x18F.
     let stored_checksum =
@@ -268,14 +270,6 @@ fn parse_sega_rom(raw_buffer: &[u8]) -> io::Result<SegaRomInfo> {
         },
         rom_sha1,
     })
-}
-
-pub fn verify_sega_checksum(raw_buffer: &[u8]) -> io::Result<SegaRomInfo> {
-    let result = parse_sega_rom(raw_buffer);
-    if let Ok(rom_info) = &result {
-        print!("{}", rom_info);
-    }
-    result
 }
 
 fn decode_name(buffer: &[u8]) -> String {

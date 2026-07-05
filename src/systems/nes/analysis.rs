@@ -161,7 +161,10 @@ fn mapper_limits(mapper: &Mapper) -> Option<MapperLimits> {
             max_chr_kb: Some(128),
         },
         Mapper::UxROM => MapperLimits {
-            max_prg_kb: Some(256),
+            // Original UNROM/UOROM boards top out at 256K, but iNES mapper 2 is
+            // defined with a full 8-bit bank select register (256 x 16K = 4M),
+            // and emulators/homebrew rely on that.
+            max_prg_kb: Some(4096),
             max_chr_kb: Some(0),
         },
         Mapper::CNROM => MapperLimits {

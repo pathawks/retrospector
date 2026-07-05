@@ -91,13 +91,6 @@ pub fn parse_cue_and_hash(cue_path: &Path) -> io::Result<(Vec<u8>, Vec<TrackHash
         let mut bin_data = Vec::new();
         File::open(&bin_path)?.read_to_end(&mut bin_data)?;
 
-        // Determine sector size from first track (usually consistent within a file)
-        let _sector_size = cue_file
-            .tracks
-            .first()
-            .map(|t| sector_size_for_format(&t.format))
-            .unwrap_or(2352);
-
         // Calculate track boundaries and hashes
         for (i, track) in cue_file.tracks.iter().enumerate() {
             // Find INDEX 01 (the actual track start)

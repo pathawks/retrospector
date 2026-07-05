@@ -61,11 +61,11 @@ impl std::fmt::Display for dyn StoredChecksum<(u32, u32)> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (crc1, crc2) = self.stored_checksum();
         if self.stored_checksum() == self.calculated_checksum() {
-            write!(f, "Stored Checksum: ({:04X},{:04X}) is valid", crc1, crc2)
+            write!(f, "Stored Checksum: ({:08X},{:08X}) is valid", crc1, crc2)
         } else {
-            writeln!(f, "Stored Checksum:     ({:04X},{:04X})", crc1, crc2)?;
+            writeln!(f, "Stored Checksum:     ({:08X},{:08X})", crc1, crc2)?;
             let (calc1, calc2) = self.calculated_checksum();
-            write!(f, "Calculated Checksum: ({:04X},{:04X})", calc1, calc2)
+            write!(f, "Calculated Checksum: ({:08X},{:08X})", calc1, calc2)
         }
     }
 }

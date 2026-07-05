@@ -145,7 +145,7 @@ impl std::fmt::Display for NintendoDiscHeader {
         writeln!(f, "Game ID: {}", self.game_id)?;
         writeln!(f, "Region: {}", decode_region(self.region_code))?;
         writeln!(f, "Version: 1.{:02}", self.version)?;
-        writeln!(f, "Disc Number: {}", self.disc_number + 1)?;
+        writeln!(f, "Disc Number: {}", u16::from(self.disc_number) + 1)?;
         if self.audio_streaming {
             writeln!(f, "Audio Streaming: Enabled")?;
         }

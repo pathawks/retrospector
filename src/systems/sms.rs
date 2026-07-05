@@ -47,6 +47,7 @@ const SIZE_CODE_64KB: u8 = 0xE;
 const SIZE_CODE_128KB: u8 = 0xF;
 
 const CHECKSUM_EXTRA_START: usize = 0x8000;
+const CHECKSUM_END_48KB: usize = 0xC000;
 const CHECKSUM_END_64KB: usize = 0x10000;
 const CHECKSUM_END_128KB: usize = 0x20000;
 const CHECKSUM_END_256KB: usize = 0x40000;
@@ -284,8 +285,12 @@ fn calculate_checksum(buffer: &[u8], header_offset: usize, rom_size_code: u8) ->
 
     // Add additional ranges based on ROM size code
     match rom_size_code {
-        SIZE_CODE_8KB..=SIZE_CODE_48KB => {
-            // 8KB-48KB: Only first bank (already covered above)
+        SIZE_CODE_8KB..=SIZE_CODE_32KB => {
+            // 8KB-32KB: Only first bank (already covered above)
+        }
+        SIZE_CODE_48KB => {
+            // 48KB: Add the third 16KB bank at 0x8000-0xBFFF
+            checksum = checksum.wrapping_add(sum_range(CHECKSUM_EXTRA_START, CHECKSUM_END_48KB));
         }
         SIZE_CODE_64KB => {
             // 64KB: Add 0x8000-0xFFFF

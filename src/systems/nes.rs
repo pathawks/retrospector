@@ -152,7 +152,7 @@ impl TryFrom<&[u8]> for NesRomInfo {
             None
         };
 
-        let mapper: Mapper = char_to_u12(buffer[8], buffer[6] >> 4 | buffer[7] & 0xf0).into();
+        let mapper: Mapper = decode_mapper(file_type, buffer).into();
         let rom_analysis = analysis::analyze(prg_data, chr_data, &mapper);
 
         let header = NesRomInfo {
@@ -321,6 +321,22 @@ fn char_to_u12(hi: u8, lo: u8) -> u16 {
         (1 << e) * (m * 2 + 1)
     } else {
         u16::from_be_bytes([hi & 0x0f, lo])
+    }
+}
+
+/// Decode the mapper number using only the header fields valid for the detected
+/// format. Byte 8's low nibble contributes mapper bits 8-11 *only* in NES 2.0;
+/// in iNES 1.0 that byte is the PRG-RAM size. Archaic iNES predates the byte-7
+/// mapper nibble (which frequently holds junk such as "DiskDude!"), so only the
+/// byte-6 nibble is trusted there.
+#[allow(clippy::arithmetic_side_effects)]
+fn decode_mapper(file_type: FileType, buffer: &[u8]) -> u16 {
+    let low_nibble = u16::from(buffer[6] >> 4);
+    let high_nibble = u16::from(buffer[7] & 0xf0);
+    match file_type {
+        FileType::NES20 => (u16::from(buffer[8] & 0x0f) << 8) | high_nibble | low_nibble,
+        FileType::INES | FileType::INES07 | FileType::TNES => high_nibble | low_nibble,
+        FileType::ArchaicINES | FileType::Raw => low_nibble,
     }
 }
 

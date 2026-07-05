@@ -17,6 +17,7 @@ use crate::traits::{
 use super::helpers::{dat_revision, non_empty};
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use encoding_rs::SHIFT_JIS;
+use std::borrow::Cow;
 use unicode_normalization::UnicodeNormalization;
 
 const FORMAT_MAGIC_LEN: usize = 4;
@@ -36,7 +37,6 @@ const STORED_FORMAT_END: usize = 0x3F;
 const COUNTRY_CODE_OFFSET: usize = 0x3E;
 const REVISION_OFFSET: usize = 0x3F;
 
-const CRC_MIN_ROM_SIZE: usize = 0x1000;
 const CIC_SELECTOR_OFFSET: usize = 0x29B;
 const CIC_6105: u8 = 0x1C;
 const CIC_6103: u8 = 0x8D;
@@ -265,19 +265,24 @@ pub fn detect_n64_format(buffer: &[u8]) -> Result<N64Format, N64ParseError> {
     }
 }
 
-pub fn correct_n64_byte_order(buffer: &[u8], format: N64Format) -> Vec<u8> {
+pub fn correct_n64_byte_order(buffer: &[u8], format: N64Format) -> Cow<'_, [u8]> {
     match format {
-        N64Format::BigEndian => buffer.to_vec(),
-        N64Format::LittleEndian => buffer
-            .chunks_exact(4)
-            .map(LittleEndian::read_u32)
-            .flat_map(u32::to_be_bytes)
-            .collect(),
-        N64Format::ByteSwapped => buffer
-            .chunks_exact(2)
-            .map(LittleEndian::read_u16)
-            .flat_map(u16::to_be_bytes)
-            .collect(),
+        // Already big-endian: hand back a borrow to avoid copying the whole ROM.
+        N64Format::BigEndian => Cow::Borrowed(buffer),
+        N64Format::LittleEndian => Cow::Owned(
+            buffer
+                .chunks_exact(4)
+                .map(LittleEndian::read_u32)
+                .flat_map(u32::to_be_bytes)
+                .collect(),
+        ),
+        N64Format::ByteSwapped => Cow::Owned(
+            buffer
+                .chunks_exact(2)
+                .map(LittleEndian::read_u16)
+                .flat_map(u16::to_be_bytes)
+                .collect(),
+        ),
     }
 }
 
@@ -302,9 +307,12 @@ fn decode_n64_title(buffer: &[u8]) -> String {
 
 #[allow(clippy::arithmetic_side_effects)]
 fn calculate_n64_crc(buffer: &[u8]) -> Result<(u32, u32), N64ParseError> {
-    if buffer.len() < CRC_MIN_ROM_SIZE {
+    // The boot CRC folds the full 1 MiB window at [0x1000, 0x101000); a buffer
+    // shorter than that would silently fold fewer words and yield a wrong CRC.
+    let crc_data_end = CRC_DATA_START.saturating_add(CRC_DATA_LEN);
+    if buffer.len() < crc_data_end {
         return Err(N64ParseError::BufferTooSmall {
-            minimum: CRC_MIN_ROM_SIZE,
+            minimum: crc_data_end,
         });
     }
 
@@ -316,16 +324,9 @@ fn calculate_n64_crc(buffer: &[u8]) -> Result<(u32, u32), N64ParseError> {
         _ => CIC_DEFAULT_SEED,
     };
     let mut i = CRC_DATA_START;
-    let [t1, t2, t3, t4, t5, t6] = buffer
-        .iter()
-        .skip(CRC_DATA_START)
-        .take(CRC_DATA_LEN)
-        .collect::<Vec<&u8>>()
+    let [t1, t2, t3, t4, t5, t6] = buffer[CRC_DATA_START..crc_data_end]
         .chunks_exact(4)
-        .filter_map(|c| match c {
-            &[&a, &b, &c, &d] => Some(BigEndian::read_u32(&[a, b, c, d])),
-            _ => unreachable!(),
-        })
+        .map(BigEndian::read_u32)
         .fold(
             [seed, seed, seed, seed, seed, seed],
             |[t1, t2, t3, t4, t5, t6], d| {

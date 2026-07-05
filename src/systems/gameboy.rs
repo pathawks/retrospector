@@ -45,6 +45,35 @@ const HEADER_CHECKSUM_SEED: u8 = 0xE7;
 const CGB_FLAG_DUAL_MODE: u8 = 0x80;
 const CGB_FLAG_EXCLUSIVE: u8 = 0xC0;
 
+/// Decode the ROM-size header byte (0x0148) to a total byte count.
+/// Codes 0x00..=0x08 double 32 KiB per step; 0x52/0x53/0x54 are the three
+/// unofficial 72/80/96-bank sizes. Unknown codes return `None`.
+#[allow(clippy::arithmetic_side_effects)]
+fn rom_size_bytes(code: u8) -> Option<u64> {
+    const BANK: u64 = 0x4000; // 16 KiB
+    match code {
+        0x00..=0x08 => Some(0x8000u64 << code),
+        0x52 => Some(72 * BANK),
+        0x53 => Some(80 * BANK),
+        0x54 => Some(96 * BANK),
+        _ => None,
+    }
+}
+
+/// Decode the RAM-size header byte (0x0149) to a total byte count.
+/// This is a lookup, not a shift: note code 0x05 (64 KiB) is smaller than
+/// code 0x04 (128 KiB). Unknown/unused codes return `None`.
+fn ram_size_bytes(code: u8) -> Option<u64> {
+    match code {
+        0x00 => Some(0),
+        0x02 => Some(8 * 1024),
+        0x03 => Some(32 * 1024),
+        0x04 => Some(128 * 1024),
+        0x05 => Some(64 * 1024),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct GameboyInfo {
     stored_checksum: u16,
@@ -52,8 +81,8 @@ pub struct GameboyInfo {
     stored_header_checksum: u8,
     calculated_header_checksum: u8,
     title: String,
-    rom_size_bytes: Byte,
-    ram_size_bytes: Byte,
+    rom_size_code: u8,
+    ram_size_code: u8,
     sgb_support: String,
     cgb_support: String,
     region: String,
@@ -141,16 +170,22 @@ impl std::fmt::Display for GameboyInfo {
             "Cartridge Type: {} ({:#04X})",
             cartridge_description, self.cartridge_type
         )?;
-        writeln!(
-            f,
-            "ROM Size: {}",
-            self.rom_size_bytes.get_appropriate_unit(UnitType::Both)
-        )?;
-        writeln!(
-            f,
-            "RAM Size: {}",
-            self.ram_size_bytes.get_appropriate_unit(UnitType::Both)
-        )?;
+        match rom_size_bytes(self.rom_size_code) {
+            Some(bytes) => writeln!(
+                f,
+                "ROM Size: {}",
+                Byte::from(bytes).get_appropriate_unit(UnitType::Both)
+            )?,
+            None => writeln!(f, "ROM Size: Unknown (0x{:02X})", self.rom_size_code)?,
+        }
+        match ram_size_bytes(self.ram_size_code) {
+            Some(bytes) => writeln!(
+                f,
+                "RAM Size: {}",
+                Byte::from(bytes).get_appropriate_unit(UnitType::Both)
+            )?,
+            None => writeln!(f, "RAM Size: Unknown (0x{:02X})", self.ram_size_code)?,
+        }
         writeln!(f, "Header Checksum: {:02X}", self.stored_header_checksum)?;
         if self.stored_header_checksum != self.calculated_header_checksum {
             writeln!(f, "Invalid header checksum")?
@@ -159,11 +194,13 @@ impl std::fmt::Display for GameboyInfo {
         writeln!(f, "{}", self as &dyn StoredChecksum<u16>)?;
         writeln!(f, "{}", self as &dyn RomHash)?;
 
-        if (self.rom_size_bytes.as_u64() as usize) < self.buffer_len {
+        if let Some(rom_len) = rom_size_bytes(self.rom_size_code).map(|b| b as usize)
+            && rom_len < self.buffer_len
+        {
             writeln!(
                 f,
                 "Possible overdump? {} extra bytes at end",
-                self.buffer_len - self.rom_size_bytes.as_u64() as usize
+                self.buffer_len.saturating_sub(rom_len)
             )?;
         };
 
@@ -264,12 +301,9 @@ impl TryFrom<&[u8]> for GameboyInfo {
         // Read the Cartridge Type
         let cartridge_type = buffer[CARTRIDGE_TYPE_OFFSET];
 
-        // Read ROM and RAM Sizes
-        let rom_size = buffer[ROM_SIZE_OFFSET] as usize;
-        let rom_size_bytes: Byte = Byte::from((0x8000 << rom_size) as u64);
-
-        let ram_size = buffer[RAM_SIZE_OFFSET] as usize;
-        let ram_size_bytes: Byte = Byte::from((0x400 << ram_size) as u64);
+        // Read ROM and RAM size codes (decoded via lookup, not a bit shift)
+        let rom_size_code = buffer[ROM_SIZE_OFFSET];
+        let ram_size_code = buffer[RAM_SIZE_OFFSET];
 
         // Read the destination code
         let destination_code = buffer[DESTINATION_CODE_OFFSET];
@@ -296,8 +330,8 @@ impl TryFrom<&[u8]> for GameboyInfo {
             title: game_title,
             stored_header_checksum,
             calculated_header_checksum,
-            rom_size_bytes,
-            ram_size_bytes,
+            rom_size_code,
+            ram_size_code,
             sgb_support: sgb_support.to_owned(),
             cgb_support: cgb_support.to_owned(),
             region: region.to_owned(),

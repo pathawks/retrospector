@@ -398,10 +398,13 @@ impl TryFrom<&[u8]> for FdsRomInfo {
         // Identify the container layout. fwNES and raw .FDS pack blocks tightly,
         // so block 2's type byte sits immediately after block 1 at 0x38. Quick
         // Disk (.QD) inserts a 2-byte CRC after every block, pushing it to 0x3A.
+        //
+        // The 0x3A marker is authoritative: in a packed .FDS that offset holds
+        // block 3's type (0x03), never a second block-2 (0x02). Checking 0x38
+        // first would misread a Quick Disk whose block-1 CRC low byte happens to
+        // be 0x02 as a raw .FDS, so test the unambiguous 0x3A marker first.
         let container = if has_fwnes_header {
             FdsContainer::FwNes
-        } else if disk_data[BLOCK2_TYPE_OFFSET] == BLOCK2_EXPECTED_TYPE {
-            FdsContainer::Fds
         } else if disk_data.get(BLOCK2_TYPE_OFFSET + QD_BLOCK_CRC_BYTES)
             == Some(&BLOCK2_EXPECTED_TYPE)
         {
@@ -559,7 +562,11 @@ impl TryFrom<&[u8]> for FdsRomInfo {
 impl std::fmt::Display for FdsRomInfo {
     #[allow(clippy::arithmetic_side_effects)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let first = &self.sides[0];
+        // The parser guarantees at least one side, but the struct is public and
+        // derives Default, so guard against an empty `sides` to avoid a panic.
+        let Some(first) = self.sides.first() else {
+            return writeln!(f, "{}", self as &dyn RomHash);
+        };
 
         let name = String::from_utf8_lossy(&first.game_name);
         writeln!(f, "Game Name: {}", name.trim_end_matches('\0'))?;
@@ -580,7 +587,7 @@ impl std::fmt::Display for FdsRomInfo {
                 f,
                 "  Side {}: Disk {} Side {} - {} files",
                 i + 1,
-                side.disk_number + 1,
+                u16::from(side.disk_number) + 1,
                 side.side,
                 side.file_count
             )?;
