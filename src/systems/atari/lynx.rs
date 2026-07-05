@@ -2,7 +2,7 @@
 //   Atari Lynx LNX file format header:
 //     https://atarilynxdeveloper.wordpress.com/documentation/file-formats/
 
-use crate::systems::helpers::{compute_sha1, non_empty};
+use crate::systems::helpers::{compute_sha1, non_empty, read_null_padded_string};
 use byteorder::{ByteOrder, LittleEndian};
 
 use crate::traits::{
@@ -114,14 +114,10 @@ impl TryFrom<&[u8]> for AtariLynxInfo {
         let version = LittleEndian::read_u16(&buffer[LYNX_VERSION_START..LYNX_TITLE_START]);
         let rotation = LynxRotation::from(buffer[LYNX_ROTATION_OFFSET]);
 
-        let title = String::from_utf8_lossy(&buffer[LYNX_TITLE_START..LYNX_TITLE_END])
-            .trim_end_matches('\0')
-            .to_string();
+        let title = read_null_padded_string(&buffer[LYNX_TITLE_START..LYNX_TITLE_END]);
 
         let manufacturer =
-            String::from_utf8_lossy(&buffer[LYNX_MANUFACTURER_START..LYNX_MANUFACTURER_END])
-                .trim_end_matches('\0')
-                .to_string();
+            read_null_padded_string(&buffer[LYNX_MANUFACTURER_START..LYNX_MANUFACTURER_END]);
 
         Ok(AtariLynxInfo {
             title,

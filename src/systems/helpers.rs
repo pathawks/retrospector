@@ -22,6 +22,30 @@ pub fn first_non_empty(values: &[&str]) -> Option<String> {
         .map(String::from)
 }
 
+#[allow(clippy::arithmetic_side_effects)]
+pub fn read_fixed_string(buffer: &[u8], offset: usize, len: usize) -> String {
+    let Some(end) = offset.checked_add(len) else {
+        return String::new();
+    };
+    let Some(bytes) = buffer.get(offset..end) else {
+        return String::new();
+    };
+    String::from_utf8_lossy(bytes).trim().to_string()
+}
+
+pub fn read_null_padded_string(buffer: &[u8]) -> String {
+    String::from_utf8_lossy(buffer)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+pub fn read_null_padded_trimmed_string(buffer: &[u8]) -> String {
+    String::from_utf8_lossy(buffer)
+        .trim_end_matches('\0')
+        .trim()
+        .to_string()
+}
+
 pub fn dat_revision(version: u8) -> Option<String> {
     (version != 0).then(|| format!("Rev {}", version))
 }

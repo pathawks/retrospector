@@ -7,6 +7,8 @@
 //! Nintendo disc header parser for GameCube and Wii
 //! Header is located at offset 0x0000
 
+use crate::systems::helpers::{dat_revision, non_empty, read_null_padded_trimmed_string};
+use crate::traits::rominfo::DatMeta;
 use byteorder::{BigEndian, ByteOrder};
 
 // Nintendo optical-disc header layout (sector 0, user data).
@@ -34,6 +36,12 @@ pub enum NintendoDiscType {
     Wii,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NintendoDiscParseError {
+    UnexpectedDiscType,
+    InvalidHeader,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct NintendoDiscHeader {
     pub disc_type: Option<NintendoDiscType>,
@@ -43,6 +51,18 @@ pub struct NintendoDiscHeader {
     pub audio_streaming: bool,
     pub title: String,
     pub region_code: char,
+}
+
+impl NintendoDiscHeader {
+    pub fn dat_meta(&self) -> DatMeta {
+        DatMeta {
+            title: non_empty(&self.title),
+            region: dat_region(self.region_code).map(String::from),
+            version: dat_revision(self.version),
+            serial: non_empty(&self.game_id),
+            ..DatMeta::default()
+        }
+    }
 }
 
 /// Detect the type of Nintendo disc
@@ -91,12 +111,20 @@ pub fn parse_nintendo_disc_header(buffer: &[u8]) -> Option<NintendoDiscHeader> {
         disc_number: buffer[DISC_NUMBER_OFFSET],
         version: buffer[VERSION_OFFSET],
         audio_streaming: buffer[AUDIO_STREAMING_OFFSET] != 0,
-        title: String::from_utf8_lossy(&buffer[TITLE_START..TITLE_END])
-            .trim_end_matches('\0')
-            .trim()
-            .to_string(),
+        title: read_null_padded_trimmed_string(&buffer[TITLE_START..TITLE_END]),
         region_code,
     })
+}
+
+pub fn parse_typed_nintendo_disc_header(
+    buffer: &[u8],
+    disc_type: NintendoDiscType,
+) -> Result<NintendoDiscHeader, NintendoDiscParseError> {
+    if detect_nintendo_disc(buffer) != Some(disc_type) {
+        return Err(NintendoDiscParseError::UnexpectedDiscType);
+    }
+
+    parse_nintendo_disc_header(buffer).ok_or(NintendoDiscParseError::InvalidHeader)
 }
 
 /// Decode region code character to region name

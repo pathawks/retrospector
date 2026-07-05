@@ -2,7 +2,7 @@
 //   Sega CD disc format and header:
 //     https://segaretro.org/Sega_Mega-CD/Disc_format
 
-use super::helpers::{compute_sha1, first_non_empty, non_empty};
+use super::helpers::{compute_sha1, first_non_empty, non_empty, read_fixed_string};
 use crate::systems::disc::decode_regions;
 use crate::systems::disc::pvd::{PrimaryVolumeDescriptor, parse_pvd};
 use crate::systems::disc::sector::{
@@ -98,12 +98,12 @@ fn parse_sega_cd_disc(buffer: &[u8]) -> Result<SegaCdDisc, SegaCdParseError> {
     let pvd = parse_pvd(buffer);
 
     Ok(SegaCdDisc {
-        hardware_id: extract_string(header, HARDWARE_ID_OFFSET, HARDWARE_ID_LEN),
-        copyright: extract_string(header, COPYRIGHT_OFFSET, COPYRIGHT_LEN),
-        domestic_title: extract_string(header, DOMESTIC_TITLE_OFFSET, DOMESTIC_TITLE_LEN),
-        overseas_title: extract_string(header, OVERSEAS_TITLE_OFFSET, OVERSEAS_TITLE_LEN),
-        product_code: extract_string(header, PRODUCT_CODE_OFFSET, PRODUCT_CODE_LEN),
-        regions: extract_string(header, REGIONS_OFFSET, REGIONS_LEN).to_uppercase(),
+        hardware_id: read_fixed_string(header, HARDWARE_ID_OFFSET, HARDWARE_ID_LEN),
+        copyright: read_fixed_string(header, COPYRIGHT_OFFSET, COPYRIGHT_LEN),
+        domestic_title: read_fixed_string(header, DOMESTIC_TITLE_OFFSET, DOMESTIC_TITLE_LEN),
+        overseas_title: read_fixed_string(header, OVERSEAS_TITLE_OFFSET, OVERSEAS_TITLE_LEN),
+        product_code: read_fixed_string(header, PRODUCT_CODE_OFFSET, PRODUCT_CODE_LEN),
+        regions: read_fixed_string(header, REGIONS_OFFSET, REGIONS_LEN).to_uppercase(),
         rom_sha1,
         pvd,
     })
@@ -157,16 +157,6 @@ fn calculate_header_offset(format: SectorFormat, magic_offset: usize, buffer: &[
     }
 
     result
-}
-
-#[allow(clippy::arithmetic_side_effects)]
-fn extract_string(buffer: &[u8], offset: usize, len: usize) -> String {
-    if buffer.len() < offset + len {
-        return String::new();
-    }
-    String::from_utf8_lossy(&buffer[offset..offset + len])
-        .trim()
-        .to_string()
 }
 
 impl Title for SegaCdDisc {

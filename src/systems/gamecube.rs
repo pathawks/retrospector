@@ -3,10 +3,8 @@
 //     https://wiibrew.org/wiki/Wii_disc#Header
 
 use crate::systems::disc::nintendo_disc::{
-    NintendoDiscHeader, NintendoDiscType, dat_region, detect_nintendo_disc,
-    parse_nintendo_disc_header,
+    NintendoDiscHeader, NintendoDiscParseError, NintendoDiscType, parse_typed_nintendo_disc_header,
 };
-use crate::systems::helpers::{dat_revision, non_empty};
 use crate::traits::error::ParseError;
 use crate::traits::rominfo::{DatMeta, RomInfo};
 use crate::traits::title::Title;
@@ -28,15 +26,7 @@ impl RomInfo for GameCubeDisc {
     }
 
     fn dat_meta(&self) -> DatMeta {
-        // Normalize optional metadata via shared helpers to keep DAT output
-        // behavior consistent across console modules.
-        DatMeta {
-            title: non_empty(&self.header.title),
-            region: dat_region(self.header.region_code).map(String::from),
-            version: dat_revision(self.header.version),
-            serial: non_empty(&self.header.game_id),
-            ..DatMeta::default()
-        }
+        self.header.dat_meta()
     }
 }
 
@@ -47,12 +37,12 @@ impl RomInfo for GameCubeDisc {
 ///   magic check fails and the GameCube magic at 0x1C is present.
 /// - Header parsing requires the full 0x60-byte Nintendo header block.
 fn parse_gamecube_disc(buffer: &[u8]) -> Result<GameCubeDisc, GameCubeParseError> {
-    if detect_nintendo_disc(buffer) != Some(NintendoDiscType::GameCube) {
-        return Err(GameCubeParseError::NotGameCubeDisc);
-    }
-
-    let header =
-        parse_nintendo_disc_header(buffer).ok_or(GameCubeParseError::InvalidNintendoHeader)?;
+    let header = parse_typed_nintendo_disc_header(buffer, NintendoDiscType::GameCube).map_err(
+        |e| match e {
+            NintendoDiscParseError::UnexpectedDiscType => GameCubeParseError::NotGameCubeDisc,
+            NintendoDiscParseError::InvalidHeader => GameCubeParseError::InvalidNintendoHeader,
+        },
+    )?;
     Ok(GameCubeDisc { header })
 }
 

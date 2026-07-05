@@ -10,6 +10,7 @@
 //! In raw sector images, user data is preceded by sector headers.
 
 use super::sector::{detect_sector_format, sector_data_offset};
+use crate::systems::helpers::read_fixed_string;
 
 pub const SATURN_MAGIC: &[u8; 16] = b"SEGA SEGASATURN ";
 pub const DREAMCAST_MAGIC: &[u8; 16] = b"SEGA SEGAKATANA ";
@@ -70,14 +71,14 @@ pub fn parse_saturn_ip(buffer: &[u8]) -> Option<SegaIpBin> {
 
     Some(SegaIpBin {
         disc_type: Some(SegaDiscType::Saturn),
-        maker_id: extract_string(buffer, base + 0x10, 16),
-        product_number: extract_string(buffer, base + 0x20, 10),
-        version: extract_string(buffer, base + 0x2A, 6),
-        release_date: format_date(&extract_string(buffer, base + 0x30, 8)),
-        device_info: extract_string(buffer, base + 0x38, 8),
-        area_codes: extract_string(buffer, base + 0x40, 10),
-        peripherals: extract_string(buffer, base + 0x50, 16),
-        title: extract_string(buffer, base + 0x60, 112),
+        maker_id: read_fixed_string(buffer, base + 0x10, 16),
+        product_number: read_fixed_string(buffer, base + 0x20, 10),
+        version: read_fixed_string(buffer, base + 0x2A, 6),
+        release_date: format_date(&read_fixed_string(buffer, base + 0x30, 8)),
+        device_info: read_fixed_string(buffer, base + 0x38, 8),
+        area_codes: read_fixed_string(buffer, base + 0x40, 10),
+        peripherals: read_fixed_string(buffer, base + 0x50, 16),
+        title: read_fixed_string(buffer, base + 0x60, 112),
         boot_filename: None,
         producer: None,
     })
@@ -93,16 +94,16 @@ pub fn parse_dreamcast_ip(buffer: &[u8]) -> Option<SegaIpBin> {
 
     Some(SegaIpBin {
         disc_type: Some(SegaDiscType::Dreamcast),
-        maker_id: extract_string(buffer, base + 0x10, 16),
-        device_info: extract_string(buffer, base + 0x20, 16),
-        area_codes: extract_string(buffer, base + 0x30, 8),
-        peripherals: extract_string(buffer, base + 0x38, 8),
-        product_number: extract_string(buffer, base + 0x40, 10),
-        version: extract_string(buffer, base + 0x4A, 6),
-        release_date: extract_string(buffer, base + 0x50, 16),
-        boot_filename: Some(extract_string(buffer, base + 0x60, 16)),
-        producer: Some(extract_string(buffer, base + 0x70, 16)),
-        title: extract_string(buffer, base + 0x80, 128),
+        maker_id: read_fixed_string(buffer, base + 0x10, 16),
+        device_info: read_fixed_string(buffer, base + 0x20, 16),
+        area_codes: read_fixed_string(buffer, base + 0x30, 8),
+        peripherals: read_fixed_string(buffer, base + 0x38, 8),
+        product_number: read_fixed_string(buffer, base + 0x40, 10),
+        version: read_fixed_string(buffer, base + 0x4A, 6),
+        release_date: read_fixed_string(buffer, base + 0x50, 16),
+        boot_filename: Some(read_fixed_string(buffer, base + 0x60, 16)),
+        producer: Some(read_fixed_string(buffer, base + 0x70, 16)),
+        title: read_fixed_string(buffer, base + 0x80, 128),
     })
 }
 
@@ -131,16 +132,6 @@ fn format_date(raw: &str) -> String {
     }
 
     raw.to_string()
-}
-
-#[allow(clippy::arithmetic_side_effects)]
-fn extract_string(buffer: &[u8], offset: usize, len: usize) -> String {
-    if buffer.len() < offset + len {
-        return String::new();
-    }
-    String::from_utf8_lossy(&buffer[offset..offset + len])
-        .trim()
-        .to_string()
 }
 
 /// Map Saturn/Dreamcast area codes to a single canonical No-Intro region string.

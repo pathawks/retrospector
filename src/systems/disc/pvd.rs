@@ -9,6 +9,7 @@
 
 pub use super::sector::SectorFormat;
 use super::sector::{detect_sector_format, sector_data_offset};
+use crate::systems::helpers::read_fixed_string;
 
 // PVD is always at sector 16
 const PVD_SECTOR: usize = 16;
@@ -80,30 +81,20 @@ pub fn parse_pvd(buffer: &[u8]) -> Option<PrimaryVolumeDescriptor> {
     }
 
     Some(PrimaryVolumeDescriptor {
-        system_id: extract_string(pvd, SYSTEM_ID_OFFSET, SYSTEM_ID_LEN),
-        volume_id: extract_string(pvd, VOLUME_ID_OFFSET, VOLUME_ID_LEN),
+        system_id: read_fixed_string(pvd, SYSTEM_ID_OFFSET, SYSTEM_ID_LEN),
+        volume_id: read_fixed_string(pvd, VOLUME_ID_OFFSET, VOLUME_ID_LEN),
         volume_size: u32::from_le_bytes([
             pvd[VOLUME_SIZE_START],
             pvd[VOLUME_SIZE_START + 1],
             pvd[VOLUME_SIZE_START + 2],
             pvd[VOLUME_SIZE_END - 1],
         ]),
-        publisher: extract_string(pvd, PUBLISHER_OFFSET, PUBLISHER_LEN),
-        data_preparer: extract_string(pvd, DATA_PREPARER_OFFSET, DATA_PREPARER_LEN),
-        application: extract_string(pvd, APPLICATION_OFFSET, APPLICATION_LEN),
+        publisher: read_fixed_string(pvd, PUBLISHER_OFFSET, PUBLISHER_LEN),
+        data_preparer: read_fixed_string(pvd, DATA_PREPARER_OFFSET, DATA_PREPARER_LEN),
+        application: read_fixed_string(pvd, APPLICATION_OFFSET, APPLICATION_LEN),
         creation_date: extract_date(pvd, CREATION_DATE_OFFSET),
         sector_format,
     })
-}
-
-#[allow(clippy::arithmetic_side_effects)]
-fn extract_string(buffer: &[u8], offset: usize, len: usize) -> String {
-    if buffer.len() < offset + len {
-        return String::new();
-    }
-    String::from_utf8_lossy(&buffer[offset..offset + len])
-        .trim()
-        .to_string()
 }
 
 #[allow(clippy::arithmetic_side_effects)]

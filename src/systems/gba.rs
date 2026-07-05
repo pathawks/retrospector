@@ -4,6 +4,7 @@
 
 use super::helpers::{
     compute_sha1, dat_revision, nintendo_region_dat, nintendo_region_display, non_empty,
+    read_null_padded_string,
 };
 use crate::systems::gameboy::lookup_new_licensee;
 use crate::traits::{
@@ -69,9 +70,7 @@ impl TryFrom<&[u8]> for GbaRomInfo {
 
         let rom_sha1 = compute_sha1(buffer);
 
-        let title = String::from_utf8_lossy(&buffer[TITLE_START..TITLE_END])
-            .trim_end_matches('\0')
-            .to_string();
+        let title = read_null_padded_string(&buffer[TITLE_START..TITLE_END]);
 
         let rom_info = GbaRomInfo {
             title,

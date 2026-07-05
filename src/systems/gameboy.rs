@@ -6,7 +6,7 @@
 //   Cartridge types (MBC1, MBC2, MBC3, MBC5, etc.):
 //     https://gbdev.io/pandocs/MBCs.html
 
-use super::helpers::{compute_sha1, dat_revision, non_empty};
+use super::helpers::{compute_sha1, dat_revision, non_empty, read_null_padded_string};
 use byte_unit::{Byte, UnitType};
 use byteorder::{BigEndian, ByteOrder};
 
@@ -294,9 +294,7 @@ impl TryFrom<&[u8]> for GameboyInfo {
         };
 
         // Read the game title
-        let game_title = String::from_utf8_lossy(&buffer[TITLE_START..TITLE_END])
-            .trim_end_matches('\0')
-            .to_string();
+        let game_title = read_null_padded_string(&buffer[TITLE_START..TITLE_END]);
 
         // Read the Cartridge Type
         let cartridge_type = buffer[CARTRIDGE_TYPE_OFFSET];
