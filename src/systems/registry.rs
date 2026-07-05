@@ -33,7 +33,7 @@ pub type DetectorFn = fn(&[u8]) -> Result<Box<dyn RomInfo>, ParseError>;
 // files far too big to belong to it. This avoids scanning huge disc images for
 // small-cartridge magic bytes — and the false positives that risk — while
 // leaving explicit `--system` selection unaffected.
-const GAMECOM_MAX_SIZE: usize = 0x40_0000; // Tiger Game.com carts top out ~2 MB
+const GAMECOM_MAX_SIZE: usize = 0x40_0000; // Tiger Game.com carts top out ~4 MB
 const COLECOVISION_MAX_SIZE: usize = 0x10_0000; // ColecoVision megacarts top out ~1 MB
 
 #[derive(Clone, Copy)]
