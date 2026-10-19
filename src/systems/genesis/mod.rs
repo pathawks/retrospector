@@ -251,10 +251,12 @@ fn parse_sega_rom(raw_buffer: &[u8]) -> io::Result<SegaRomInfo> {
             .to_uppercase(),
         stored_checksum,
         calced_checksum: buffer
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             // Cartridge checksum sums 16-bit words from 0x200 to EOF.
             .skip(CHECKSUM_WORD_START)
-            .map(BigEndian::read_u16)
+            .map(|word| BigEndian::read_u16(word))
             .fold(0u16, |lhs, rhs| lhs.wrapping_add(rhs)),
         lock_on: if is_sonic_and_knuckles && rom_size < raw_buffer.len() {
             match parse_sega_rom(&raw_buffer[rom_size..]) {

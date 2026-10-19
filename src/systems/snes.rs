@@ -259,7 +259,7 @@ impl std::fmt::Display for SNESRomInfo {
 
         write!(f, "{}", self as &dyn Title)?;
         writeln!(f, "Region: {}", region)?;
-        writeln!(f, "Revision: {}", &self.revision)?;
+        writeln!(f, "Revision: {}", self.revision)?;
         writeln!(
             f,
             "Cartridge Type: {} ({:#04X})",
@@ -270,12 +270,12 @@ impl std::fmt::Display for SNESRomInfo {
         writeln!(
             f,
             "ROM Size:  {}",
-            &self.rom_size.get_appropriate_unit(UnitType::Both)
+            self.rom_size.get_appropriate_unit(UnitType::Both)
         )?;
         writeln!(
             f,
             "File Size: {}",
-            &self.file_size.get_appropriate_unit(UnitType::Both)
+            self.file_size.get_appropriate_unit(UnitType::Both)
         )?;
 
         // Verify checksum

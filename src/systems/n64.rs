@@ -271,15 +271,19 @@ pub fn correct_n64_byte_order(buffer: &[u8], format: N64Format) -> Cow<'_, [u8]>
         N64Format::BigEndian => Cow::Borrowed(buffer),
         N64Format::LittleEndian => Cow::Owned(
             buffer
-                .chunks_exact(4)
-                .map(LittleEndian::read_u32)
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|word| LittleEndian::read_u32(word))
                 .flat_map(u32::to_be_bytes)
                 .collect(),
         ),
         N64Format::ByteSwapped => Cow::Owned(
             buffer
-                .chunks_exact(2)
-                .map(LittleEndian::read_u16)
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|word| LittleEndian::read_u16(word))
                 .flat_map(u16::to_be_bytes)
                 .collect(),
         ),
@@ -325,8 +329,10 @@ fn calculate_n64_crc(buffer: &[u8]) -> Result<(u32, u32), N64ParseError> {
     };
     let mut i = CRC_DATA_START;
     let [t1, t2, t3, t4, t5, t6] = buffer[CRC_DATA_START..crc_data_end]
-        .chunks_exact(4)
-        .map(BigEndian::read_u32)
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|word| BigEndian::read_u32(word))
         .fold(
             [seed, seed, seed, seed, seed, seed],
             |[t1, t2, t3, t4, t5, t6], d| {
