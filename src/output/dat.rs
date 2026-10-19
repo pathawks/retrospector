@@ -90,15 +90,14 @@ fn game_metadata_from_dat_meta(stem: &str, meta: DatMeta, system: Option<String>
     );
     let name = meta
         .machine_id
-        .clone()
         .unwrap_or_else(|| description.clone());
     let releases = meta
         .region
-        .iter()
-        .map(|r| ReleaseEntry {
-            region: r.clone(),
+        .map(|region| ReleaseEntry {
+            region,
             date: meta.date.clone(),
         })
+        .into_iter()
         .collect();
     let year = meta
         .date
