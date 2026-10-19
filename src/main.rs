@@ -76,23 +76,11 @@ fn main() -> io::Result<()> {
 
     match args.output {
         Some(OutputFormat::Dat) => {
-            let mut all_games = Vec::new();
-            for path in &args.paths {
-                match dat::collect_games(path) {
-                    Ok(games) => all_games.extend(games),
-                    Err(e) => eprintln!("Error processing file {}: {}", path.display(), e),
-                }
-            }
+            let all_games = collect_dat_games(&args.paths);
             print!("{}", dat::serialize_dat(&all_games));
         }
         Some(OutputFormat::MameDat) => {
-            let mut all_games = Vec::new();
-            for path in &args.paths {
-                match dat::collect_games(path) {
-                    Ok(games) => all_games.extend(games),
-                    Err(e) => eprintln!("Error processing file {}: {}", path.display(), e),
-                }
-            }
+            let all_games = collect_dat_games(&args.paths);
             print!("{}", dat::serialize_mamedat(&all_games));
         }
         Some(OutputFormat::Cuesheet) => {
@@ -122,6 +110,14 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn collect_dat_games(paths: &[PathBuf]) -> Vec<dat::GameEntry> {
+    let (games, errors) = dat::collect_games_for_paths(paths);
+    for (path, error) in errors {
+        eprintln!("Error processing file {}: {}", path.display(), error);
+    }
+    games
 }
 
 fn process_file(path: &Path, system: Option<&str>) -> io::Result<()> {

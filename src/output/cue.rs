@@ -29,6 +29,14 @@ pub struct TrackHash {
     pub isrc: Option<String>,
 }
 
+/// Hashes for one file referenced by a CUE sheet.
+#[derive(Debug, Clone)]
+pub struct CueFileHash {
+    pub file: String,
+    pub hashes: Hashes,
+    pub size: usize,
+}
+
 /// Sector size based on track format
 fn sector_size_for_format(format: &str) -> usize {
     match format.to_uppercase().as_str() {
@@ -58,29 +66,8 @@ fn duration_to_bytes(duration: &Duration, sector_size: usize) -> usize {
 /// Returns the combined data, track hashes, and the parsed CUE struct
 #[allow(clippy::arithmetic_side_effects)]
 pub fn parse_cue_and_hash(cue_path: &Path) -> io::Result<(Vec<u8>, Vec<TrackHash>, Cue)> {
-    let cue_path_str = cue_path
-        .to_str()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid path encoding"))?;
-    let cue = rcue::parser::parse_from_file(cue_path_str, false).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("CUE parse error: {:?}", e),
-        )
-    })?;
-
-    let mut all_data = Vec::new();
     let mut track_hashes = Vec::new();
-
-    for cue_file in &cue.files {
-        // Resolve the BIN path relative to the CUE file
-        let bin_path = cue_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(&cue_file.file);
-
-        let mut bin_data = Vec::new();
-        File::open(&bin_path)?.read_to_end(&mut bin_data)?;
-
+    let (all_data, cue) = read_cue_files(cue_path, |cue_file, bin_data| {
         // Calculate track boundaries and hashes
         for (i, track) in cue_file.tracks.iter().enumerate() {
             // Find INDEX 01 (the actual track start)
@@ -136,11 +123,61 @@ pub fn parse_cue_and_hash(cue_path: &Path) -> io::Result<(Vec<u8>, Vec<TrackHash
                 });
             }
         }
+        Ok(())
+    })?;
 
+    Ok((all_data, track_hashes, cue))
+}
+
+/// Parse a CUE file, concatenate its referenced data, and hash each referenced file.
+pub fn parse_cue_files_and_hash(cue_path: &Path) -> io::Result<(Vec<u8>, Vec<CueFileHash>)> {
+    let mut file_hashes = Vec::new();
+    let (all_data, _) = read_cue_files(cue_path, |cue_file, bin_data| {
+        file_hashes.push(CueFileHash {
+            file: cue_file.file.clone(),
+            hashes: compute_hashes(bin_data),
+            size: bin_data.len(),
+        });
+        Ok(())
+    })?;
+
+    Ok((all_data, file_hashes))
+}
+
+/// Parse a CUE sheet without reading its referenced files.
+pub fn parse_cue(cue_path: &Path) -> io::Result<Cue> {
+    let cue_path_str = cue_path
+        .to_str()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid path encoding"))?;
+    rcue::parser::parse_from_file(cue_path_str, false).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("CUE parse error: {:?}", e),
+        )
+    })
+}
+
+fn read_cue_files(
+    cue_path: &Path,
+    mut visit_file: impl FnMut(&CueFile, &[u8]) -> io::Result<()>,
+) -> io::Result<(Vec<u8>, Cue)> {
+    let cue = parse_cue(cue_path)?;
+    let mut all_data = Vec::new();
+
+    for cue_file in &cue.files {
+        // Resolve the referenced data path relative to the CUE file.
+        let bin_path = cue_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(&cue_file.file);
+
+        let mut bin_data = Vec::new();
+        File::open(&bin_path)?.read_to_end(&mut bin_data)?;
+        visit_file(cue_file, &bin_data)?;
         all_data.extend(bin_data);
     }
 
-    Ok((all_data, track_hashes, cue))
+    Ok((all_data, cue))
 }
 
 /// An enriched CUE sheet containing both original data and retrospector analysis

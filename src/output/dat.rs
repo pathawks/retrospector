@@ -1,12 +1,13 @@
 //! No-Intro/Logiqx XML DAT output module for retrospector
 
-use crate::output::cue::parse_cue_and_hash;
+use crate::output::cue::{parse_cue, parse_cue_files_and_hash};
 use crate::output::hash::{Hashes, compute_hashes, hex_upper_spaced};
 use crate::systems::detect_rom;
 use crate::traits::rominfo::DatMeta;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct RomEntry {
     pub name: String,
@@ -160,41 +161,122 @@ pub fn collect_games(path: &Path) -> io::Result<Vec<GameEntry>> {
         .map(|s| s.to_lowercase());
 
     if ext.as_deref() == Some("cue") {
-        let (data, track_hashes, _cue) = parse_cue_and_hash(path)?;
-        let metadata = detect_game_metadata(stem, &data);
-        let serial = metadata.serial.clone();
-
-        let roms = track_hashes
-            .iter()
-            .enumerate()
-            .map(|(i, track)| {
-                let track_num: u32 = track.number.parse().unwrap_or(0);
-                RomEntry {
-                    name: format!("Track {:02}.bin", track_num),
-                    size: track.size,
-                    hashes: track.hashes,
-                    header: None,
-                    serial: if i == 0 { serial.clone() } else { None },
-                }
-            })
-            .collect();
-
-        Ok(vec![game_entry(metadata, roms)])
+        Ok(vec![collect_cue_game(path)?])
     } else {
-        let mut data = Vec::new();
-        File::open(path)?.read_to_end(&mut data)?;
-
-        let file_name = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
-
-        let metadata = detect_game_metadata(stem, &data);
-        let rom = rom_entry(file_name, &data, metadata.serial.clone());
-
-        Ok(vec![game_entry(metadata, vec![rom])])
+        collect_regular_game(path, stem)
     }
+}
+
+fn collect_regular_game(path: &Path, stem: &str) -> io::Result<Vec<GameEntry>> {
+    let mut data = Vec::new();
+    File::open(path)?.read_to_end(&mut data)?;
+
+    let file_name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    let metadata = detect_game_metadata(stem, &data);
+    let rom = rom_entry(file_name, &data, metadata.serial.clone());
+
+    Ok(vec![game_entry(metadata, vec![rom])])
+}
+
+fn collect_cue_game(path: &Path) -> io::Result<GameEntry> {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown");
+    let (data, file_hashes) = parse_cue_files_and_hash(path)?;
+    let metadata = detect_game_metadata(stem, &data);
+    let serial = metadata.serial.clone();
+    let mut seen_files = HashSet::new();
+    let mut roms = Vec::with_capacity(file_hashes.len());
+
+    for (index, file) in file_hashes.into_iter().enumerate() {
+        let key = canonical_path(
+            &path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(&file.file),
+        );
+        if !seen_files.insert(key) {
+            continue;
+        }
+
+        let name = Path::new(&file.file)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&file.file)
+            .to_string();
+        roms.push(RomEntry {
+            name,
+            size: file.size,
+            hashes: file.hashes,
+            header: None,
+            serial: if index == 0 { serial.clone() } else { None },
+        });
+    }
+
+    let mut cue_data = Vec::new();
+    File::open(path)?.read_to_end(&mut cue_data)?;
+    let cue_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+    roms.push(rom_entry(cue_name, &cue_data, None));
+
+    Ok(game_entry(metadata, roms))
+}
+
+/// Collect input files while attaching CUE-referenced files to their CUE machine.
+/// Errors retain their source paths so callers can report failures per input.
+pub fn collect_games_for_paths(paths: &[PathBuf]) -> (Vec<GameEntry>, Vec<(PathBuf, io::Error)>) {
+    let mut referenced_files = HashSet::new();
+    for path in paths {
+        if !has_extension(path, "cue") {
+            continue;
+        }
+
+        if let Ok(cue) = parse_cue(path) {
+            let parent = path.parent().unwrap_or_else(|| Path::new("."));
+            let cue_files: Vec<PathBuf> = cue
+                .files
+                .iter()
+                .map(|file| parent.join(&file.file))
+                .collect();
+            if cue_files.iter().all(|file| File::open(file).is_ok()) {
+                referenced_files.extend(cue_files.iter().map(|file| canonical_path(file)));
+            }
+        }
+    }
+
+    let mut games = Vec::new();
+    let mut errors = Vec::new();
+    for path in paths {
+        if !has_extension(path, "cue") && referenced_files.contains(&canonical_path(path)) {
+            continue;
+        }
+
+        match collect_games(path) {
+            Ok(path_games) => games.extend(path_games),
+            Err(error) => errors.push((path.clone(), error)),
+        }
+    }
+
+    (games, errors)
+}
+
+fn has_extension(path: &Path, extension: &str) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
+}
+
+fn canonical_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn is_xml_10_char(ch: char) -> bool {
