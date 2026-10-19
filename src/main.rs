@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use retrospector::output::cue::{parse_cue_and_hash, process_cuesheet};
 use retrospector::output::dat;
 use retrospector::systems;
@@ -6,26 +6,12 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, ValueEnum)]
 enum OutputFormat {
     Dat,
+    #[value(name = "mamedat")]
     MameDat,
     Cuesheet,
-}
-
-impl std::str::FromStr for OutputFormat {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "dat" => Ok(OutputFormat::Dat),
-            "mamedat" => Ok(OutputFormat::MameDat),
-            "cuesheet" => Ok(OutputFormat::Cuesheet),
-            _ => Err(format!(
-                "Unknown output format: '{}'. Valid options: dat, mamedat, cuesheet",
-                s
-            )),
-        }
-    }
 }
 
 /// Build the long help text for --system by listing all registered system names.
@@ -56,7 +42,7 @@ struct Cli {
     paths: Vec<PathBuf>,
 
     /// Output format: dat, mamedat, or cuesheet
-    #[arg(long = "output")]
+    #[arg(long = "output", value_enum, ignore_case = true)]
     output: Option<OutputFormat>,
 
     /// Force a particular system instead of auto-detecting
@@ -187,4 +173,23 @@ fn process_file(path: &Path, system: Option<&str>) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, OutputFormat};
+    use clap::Parser;
+
+    #[test]
+    fn output_format_values_keep_existing_spelling_and_case_insensitivity() {
+        for (value, expected) in [
+            ("dat", OutputFormat::Dat),
+            ("MAMEDAT", OutputFormat::MameDat),
+            ("CueSheet", OutputFormat::Cuesheet),
+        ] {
+            let cli = Cli::try_parse_from(["retrospector", "--output", value, "rom.bin"])
+                .expect("supported output format should parse");
+            assert_eq!(cli.output, Some(expected));
+        }
+    }
 }
