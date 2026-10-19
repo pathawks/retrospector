@@ -68,21 +68,54 @@ pub fn compute_hashes(data: &[u8]) -> Hashes {
 }
 
 pub fn hex_lower(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    hex_with_alphabet(bytes, b"0123456789abcdef")
 }
 
 pub fn hex_upper(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02X}", b)).collect()
+    hex_with_alphabet(bytes, b"0123456789ABCDEF")
 }
 
 pub fn hex_upper_spaced(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{:02X}", b))
-        .collect::<Vec<_>>()
-        .join(" ")
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut output = String::with_capacity(bytes.len().saturating_mul(3));
+
+    for (index, &byte) in bytes.iter().enumerate() {
+        if index > 0 {
+            output.push(' ');
+        }
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+
+    output
+}
+
+fn hex_with_alphabet(bytes: &[u8], alphabet: &[u8; 16]) -> String {
+    let mut output = String::with_capacity(bytes.len().saturating_mul(2));
+
+    for &byte in bytes {
+        output.push(alphabet[(byte >> 4) as usize] as char);
+        output.push(alphabet[(byte & 0x0f) as usize] as char);
+    }
+
+    output
 }
 
 pub fn format_sha1(hash: &[u8; 20]) -> String {
     hex_upper(hash)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hex_lower, hex_upper, hex_upper_spaced};
+
+    #[test]
+    fn hex_encoders_preserve_case_and_spacing() {
+        let bytes = [0x00, 0xa5, 0xff];
+
+        assert_eq!(hex_lower(&bytes), "00a5ff");
+        assert_eq!(hex_upper(&bytes), "00A5FF");
+        assert_eq!(hex_upper_spaced(&bytes), "00 A5 FF");
+        assert_eq!(hex_upper_spaced(&[]), "");
+    }
 }

@@ -5,6 +5,7 @@ use crate::output::hash::{Hashes, compute_hashes, hex_upper_spaced};
 use crate::systems::detect_rom;
 use crate::traits::rominfo::DatMeta;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -61,10 +62,10 @@ fn build_game_name(
     let base = title.filter(|t| !t.is_empty()).unwrap_or(stem);
     let mut name = base.to_string();
     if let Some(r) = region {
-        name.push_str(&format!(" ({})", r));
+        write!(name, " ({r})").expect("writing to a String cannot fail");
     }
     if let Some(v) = version {
-        name.push_str(&format!(" ({})", v));
+        write!(name, " ({v})").expect("writing to a String cannot fail");
     }
     name
 }
@@ -88,9 +89,7 @@ fn game_metadata_from_dat_meta(stem: &str, meta: DatMeta, system: Option<String>
         meta.region.as_deref(),
         meta.version.as_deref(),
     );
-    let name = meta
-        .machine_id
-        .unwrap_or_else(|| description.clone());
+    let name = meta.machine_id.unwrap_or_else(|| description.clone());
     let releases = meta
         .region
         .map(|region| ReleaseEntry {
@@ -328,52 +327,59 @@ pub fn serialize_dat(games: &[GameEntry]) -> String {
     out.push_str("\t</header>\n");
 
     for game in games {
-        out.push_str(&format!("\t<game name=\"{}\">\n", xml_escape(&game.name)));
+        writeln!(out, "\t<game name=\"{}\">", xml_escape(&game.name))
+            .expect("writing to a String cannot fail");
         if let Some(ref sys) = game.system {
-            out.push_str(&format!("\t\t<!-- System: {} -->\n", xml_escape(sys)));
+            writeln!(out, "\t\t<!-- System: {} -->", xml_escape(sys))
+                .expect("writing to a String cannot fail");
         }
         out.push_str("\t\t<category>Games</category>\n");
-        out.push_str(&format!(
-            "\t\t<description>{}</description>\n",
+        writeln!(
+            out,
+            "\t\t<description>{}</description>",
             xml_escape(&game.description)
-        ));
+        )
+        .expect("writing to a String cannot fail");
 
         if let Some(ref year) = game.year {
-            out.push_str(&format!("\t\t<year>{}</year>\n", xml_escape(year)));
+            writeln!(out, "\t\t<year>{}</year>", xml_escape(year))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref mfr) = game.manufacturer {
-            out.push_str(&format!(
-                "\t\t<manufacturer>{}</manufacturer>\n",
-                xml_escape(mfr)
-            ));
+            writeln!(out, "\t\t<manufacturer>{}</manufacturer>", xml_escape(mfr))
+                .expect("writing to a String cannot fail");
         }
 
         for release in &game.releases {
-            let date_attr = release
-                .date
-                .as_deref()
-                .map(|d| format!(" date=\"{}\"", xml_escape(d)))
-                .unwrap_or_default();
-            out.push_str(&format!(
-                "\t\t<release name=\"{}\" region=\"{}\"{}/>\n",
+            write!(
+                out,
+                "\t\t<release name=\"{}\" region=\"{}\"",
                 xml_escape(&game.name),
                 xml_escape(&release.region),
-                date_attr,
-            ));
+            )
+            .expect("writing to a String cannot fail");
+            if let Some(date) = release.date.as_deref() {
+                write!(out, " date=\"{}\"", xml_escape(date))
+                    .expect("writing to a String cannot fail");
+            }
+            out.push_str("/>\n");
         }
 
         for rom in &game.roms {
-            out.push_str(&format!(
-                "\t\t<rom name=\"{}\" size=\"{}\" crc=\"{}\" md5=\"{}\" sha1=\"{}\" sha256=\"{}\"{}{}/>\n",
+            write!(
+                out,
+                "\t\t<rom name=\"{}\" size=\"{}\" crc=\"{}\" md5=\"{}\" sha1=\"{}\" sha256=\"{}\"",
                 xml_escape(&rom.name),
                 rom.size,
                 rom.hashes.crc32_hex_lower(),
                 rom.hashes.md5_hex_lower(),
                 rom.hashes.sha1_hex_lower(),
                 rom.hashes.sha256_hex_lower(),
-                header_attr(rom),
-                serial_attr(rom),
-            ));
+            )
+            .expect("writing to a String cannot fail");
+            write_header_attr(&mut out, rom);
+            write_serial_attr(&mut out, rom);
+            out.push_str("/>\n");
         }
 
         out.push_str("\t</game>\n");
@@ -413,28 +419,32 @@ pub fn serialize_mamedat(games: &[GameEntry]) -> String {
     out.push_str("\t</header>\n");
 
     for game in games {
-        out.push_str(&format!(
-            "\t<machine name=\"{}\">\n",
-            xml_escape(&game.name)
-        ));
+        writeln!(out, "\t<machine name=\"{}\">", xml_escape(&game.name))
+            .expect("writing to a String cannot fail");
         if let Some(ref sys) = game.system {
-            out.push_str(&format!("\t\t<!-- System: {} -->\n", xml_escape(sys)));
+            writeln!(out, "\t\t<!-- System: {} -->", xml_escape(sys))
+                .expect("writing to a String cannot fail");
         }
-        out.push_str(&format!(
-            "\t\t<description>{}</description>\n",
+        writeln!(
+            out,
+            "\t\t<description>{}</description>",
             xml_escape(&game.description)
-        ));
+        )
+        .expect("writing to a String cannot fail");
 
         for rom in &game.roms {
-            out.push_str(&format!(
-                "\t\t<rom name=\"{}\" size=\"{}\" crc=\"{}\" md5=\"{}\" sha1=\"{}\"{}/>\n",
+            write!(
+                out,
+                "\t\t<rom name=\"{}\" size=\"{}\" crc=\"{}\" md5=\"{}\" sha1=\"{}\"",
                 xml_escape(&rom.name),
                 rom.size,
                 rom.hashes.crc32_hex_lower(),
                 rom.hashes.md5_hex_lower(),
                 rom.hashes.sha1_hex_lower(),
-                header_attr(rom),
-            ));
+            )
+            .expect("writing to a String cannot fail");
+            write_header_attr(&mut out, rom);
+            out.push_str("/>\n");
         }
 
         out.push_str("\t</machine>\n");
@@ -444,22 +454,22 @@ pub fn serialize_mamedat(games: &[GameEntry]) -> String {
     out
 }
 
-fn header_attr(rom: &RomEntry) -> String {
-    rom.header
-        .map(|header| format!(" header=\"{}\"", hex_upper_spaced(&header)))
-        .unwrap_or_default()
+fn write_header_attr(out: &mut String, rom: &RomEntry) {
+    if let Some(header) = rom.header {
+        write!(out, " header=\"{}\"", hex_upper_spaced(&header))
+            .expect("writing to a String cannot fail");
+    }
 }
 
-fn serial_attr(rom: &RomEntry) -> String {
-    rom.serial
-        .as_deref()
-        .map(|serial| format!(" serial=\"{}\"", xml_escape(serial)))
-        .unwrap_or_default()
+fn write_serial_attr(out: &mut String, rom: &RomEntry) {
+    if let Some(serial) = rom.serial.as_deref() {
+        write!(out, " serial=\"{}\"", xml_escape(serial)).expect("writing to a String cannot fail");
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::xml_escape;
+    use super::{GameEntry, Hashes, ReleaseEntry, RomEntry, serialize_dat, xml_escape};
 
     #[test]
     fn xml_escape_filters_xml_10_invalid_characters() {
@@ -472,5 +482,45 @@ mod tests {
     #[test]
     fn xml_escape_keeps_allowed_controls_and_unicode() {
         assert_eq!(xml_escape("\t\n\rCafé"), "\t\n\rCafé");
+    }
+
+    #[test]
+    fn serialize_dat_writes_release_and_rom_attributes() {
+        let game = GameEntry {
+            name: "Game".into(),
+            description: "Game (USA)".into(),
+            year: None,
+            manufacturer: None,
+            releases: vec![ReleaseEntry {
+                region: "USA".into(),
+                date: Some("1995-01-01".into()),
+            }],
+            roms: vec![RomEntry {
+                name: "game.rom".into(),
+                size: 1,
+                hashes: Hashes {
+                    crc32: 0,
+                    md5: [0; 16],
+                    sha1: [0; 20],
+                    sha256: [0; 32],
+                },
+                header: Some([0xab; 16]),
+                serial: Some("AB\"CD".into()),
+            }],
+            system: None,
+        };
+
+        let output = serialize_dat(&[game]);
+
+        assert!(
+            output.contains("\t\t<release name=\"Game\" region=\"USA\" date=\"1995-01-01\"/>\n")
+        );
+        assert!(output.contains(&format!(
+            "\t\t<rom name=\"game.rom\" size=\"1\" crc=\"00000000\" md5=\"{}\" sha1=\"{}\" sha256=\"{}\" header=\"{}\" serial=\"AB&quot;CD\"/>\n",
+            "0".repeat(32),
+            "0".repeat(40),
+            "0".repeat(64),
+            ["AB"; 16].join(" "),
+        )));
     }
 }

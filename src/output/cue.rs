@@ -8,6 +8,7 @@ use crate::output::hash::{Hashes, compute_hashes};
 use crate::systems::disc::{DiscAnalysis, detect_disc};
 use rcue::cue::{Cue, CueFile, Track};
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
@@ -204,16 +205,17 @@ impl EnrichedCue {
 
         // 1. Disc-level analysis as REM comments
         if let Some(ref console) = self.disc_analysis.console {
-            output.push_str(&format!("REM CONSOLE {}\n", console));
+            writeln!(output, "REM CONSOLE {console}").expect("writing to a String cannot fail");
         }
         if let Some(ref region) = self.disc_analysis.region {
-            output.push_str(&format!("REM REGION {}\n", region));
+            writeln!(output, "REM REGION {region}").expect("writing to a String cannot fail");
         }
         if let Some(ref product_code) = self.disc_analysis.product_code {
-            output.push_str(&format!("REM SERIAL \"{}\"\n", escape_quotes(product_code)));
+            writeln!(output, "REM SERIAL \"{}\"", escape_quotes(product_code))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref disc_sha1) = self.disc_analysis.disc_sha1 {
-            output.push_str(&format!("REM SHA1 {}\n", disc_sha1));
+            writeln!(output, "REM SHA1 {disc_sha1}").expect("writing to a String cannot fail");
         }
 
         // 3. Disc-level unknown lines
@@ -226,22 +228,27 @@ impl EnrichedCue {
 
         // 4. Disc-level structural commands
         if let Some(ref catalog) = self.cue.catalog {
-            output.push_str(&format!("CATALOG {}\n", catalog));
+            writeln!(output, "CATALOG {catalog}").expect("writing to a String cannot fail");
         }
         if let Some(ref cd_text_file) = self.cue.cd_text_file {
-            output.push_str(&format!("CDTEXTFILE \"{}\"\n", escape_quotes(cd_text_file)));
+            writeln!(output, "CDTEXTFILE \"{}\"", escape_quotes(cd_text_file))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref performer) = self.cue.performer {
-            output.push_str(&format!("PERFORMER \"{}\"\n", escape_quotes(performer)));
+            writeln!(output, "PERFORMER \"{}\"", escape_quotes(performer))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref songwriter) = self.cue.songwriter {
-            output.push_str(&format!("SONGWRITER \"{}\"\n", escape_quotes(songwriter)));
+            writeln!(output, "SONGWRITER \"{}\"", escape_quotes(songwriter))
+                .expect("writing to a String cannot fail");
         }
         // Use original title if present, otherwise use detected title
         if let Some(ref title) = self.cue.title {
-            output.push_str(&format!("TITLE \"{}\"\n", escape_quotes(title)));
+            writeln!(output, "TITLE \"{}\"", escape_quotes(title))
+                .expect("writing to a String cannot fail");
         } else if let Some(ref title) = self.disc_analysis.title {
-            output.push_str(&format!("TITLE \"{}\"\n", escape_quotes(title)));
+            writeln!(output, "TITLE \"{}\"", escape_quotes(title))
+                .expect("writing to a String cannot fail");
         }
 
         // 5. FILE entries
@@ -254,11 +261,13 @@ impl EnrichedCue {
 
     fn serialize_file(&self, file: &CueFile, output: &mut String) {
         // FILE command
-        output.push_str(&format!(
-            "FILE \"{}\" {}\n",
+        writeln!(
+            output,
+            "FILE \"{}\" {}",
             escape_quotes(&file.file),
             file.format
-        ));
+        )
+        .expect("writing to a String cannot fail");
 
         // TRACKs
         for track in &file.tracks {
@@ -268,32 +277,36 @@ impl EnrichedCue {
 
     fn serialize_track(&self, track: &Track, output: &mut String) {
         // TRACK command
-        output.push_str(&format!("  TRACK {} {}\n", track.no, track.format));
+        writeln!(output, "  TRACK {} {}", track.no, track.format)
+            .expect("writing to a String cannot fail");
 
         // Track metadata
         if let Some(ref title) = track.title {
-            output.push_str(&format!("    TITLE \"{}\"\n", escape_quotes(title)));
+            writeln!(output, "    TITLE \"{}\"", escape_quotes(title))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref performer) = track.performer {
-            output.push_str(&format!("    PERFORMER \"{}\"\n", escape_quotes(performer)));
+            writeln!(output, "    PERFORMER \"{}\"", escape_quotes(performer))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref songwriter) = track.songwriter {
-            output.push_str(&format!(
-                "    SONGWRITER \"{}\"\n",
-                escape_quotes(songwriter)
-            ));
+            writeln!(output, "    SONGWRITER \"{}\"", escape_quotes(songwriter))
+                .expect("writing to a String cannot fail");
         }
         if let Some(ref isrc) = track.isrc {
-            output.push_str(&format!("    ISRC {}\n", isrc));
+            writeln!(output, "    ISRC {isrc}").expect("writing to a String cannot fail");
         }
         if !track.flags.is_empty() {
-            output.push_str(&format!("    FLAGS {}\n", track.flags.join(" ")));
+            writeln!(output, "    FLAGS {}", track.flags.join(" "))
+                .expect("writing to a String cannot fail");
         }
 
         // Track analysis
         if let Some(analysis) = self.track_analyses.get(&track.no) {
-            output.push_str(&format!("    REM SHA1 {}\n", analysis.sha1));
-            output.push_str(&format!("    REM SIZE {}\n", analysis.size));
+            writeln!(output, "    REM SHA1 {}", analysis.sha1)
+                .expect("writing to a String cannot fail");
+            writeln!(output, "    REM SIZE {}", analysis.size)
+                .expect("writing to a String cannot fail");
         }
 
         // Track unknown lines
@@ -307,21 +320,25 @@ impl EnrichedCue {
 
         // PREGAP
         if let Some(ref pregap) = track.pregap {
-            output.push_str(&format!("    PREGAP {}\n", duration_to_timestamp(pregap)));
+            writeln!(output, "    PREGAP {}", duration_to_timestamp(pregap))
+                .expect("writing to a String cannot fail");
         }
 
         // INDEX commands
         for (idx, duration) in &track.indices {
-            output.push_str(&format!(
-                "    INDEX {} {}\n",
+            writeln!(
+                output,
+                "    INDEX {} {}",
                 idx,
                 duration_to_timestamp(duration)
-            ));
+            )
+            .expect("writing to a String cannot fail");
         }
 
         // POSTGAP
         if let Some(ref postgap) = track.postgap {
-            output.push_str(&format!("    POSTGAP {}\n", duration_to_timestamp(postgap)));
+            writeln!(output, "    POSTGAP {}", duration_to_timestamp(postgap))
+                .expect("writing to a String cannot fail");
         }
     }
 }
@@ -403,5 +420,23 @@ mod tests {
         assert_eq!(escape_quotes("hello"), "hello");
         assert_eq!(escape_quotes("hello \"world\""), "hello \\\"world\\\"");
         assert_eq!(escape_quotes("path\\to\\file"), "path\\\\to\\\\file");
+    }
+
+    #[test]
+    fn serialize_writes_cue_commands() {
+        let mut cue = Cue::new();
+        cue.title = Some("Album".into());
+
+        let mut file = CueFile::new("disc.bin", "BINARY");
+        let mut track = Track::new("01", "AUDIO");
+        track.title = Some("Song".into());
+        track.indices.push(("01".into(), Duration::from_secs(1)));
+        file.tracks.push(track);
+        cue.files.push(file);
+
+        assert_eq!(
+            EnrichedCue::new(cue).serialize(),
+            "TITLE \"Album\"\nFILE \"disc.bin\" BINARY\n  TRACK 01 AUDIO\n    TITLE \"Song\"\n    INDEX 01 00:01:00\n"
+        );
     }
 }
