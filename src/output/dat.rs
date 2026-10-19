@@ -197,11 +197,33 @@ pub fn collect_games(path: &Path) -> io::Result<Vec<GameEntry>> {
     }
 }
 
+fn is_xml_10_char(ch: char) -> bool {
+    // XML 1.0's Char production: #x9, #xA, #xD, and the listed ranges.
+    matches!(
+        ch,
+        '\u{9}' | '\u{A}' | '\u{D}'
+            | '\u{20}'..='\u{D7FF}'
+            | '\u{E000}'..='\u{FFFD}'
+            | '\u{10000}'..='\u{10FFFF}'
+    )
+}
+
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    let mut escaped = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if !is_xml_10_char(ch) {
+            continue;
+        }
+
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 pub fn serialize_dat(games: &[GameEntry]) -> String {
@@ -352,4 +374,22 @@ fn serial_attr(rom: &RomEntry) -> String {
         .as_deref()
         .map(|serial| format!(" serial=\"{}\"", xml_escape(serial)))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xml_escape;
+
+    #[test]
+    fn xml_escape_filters_xml_10_invalid_characters() {
+        assert_eq!(
+            xml_escape("A\0\u{1}\u{B}\u{FFFE}\u{FFFF}&<>\""),
+            "A&amp;&lt;&gt;&quot;"
+        );
+    }
+
+    #[test]
+    fn xml_escape_keeps_allowed_controls_and_unicode() {
+        assert_eq!(xml_escape("\t\n\rCafé"), "\t\n\rCafé");
+    }
 }

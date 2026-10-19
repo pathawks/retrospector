@@ -34,9 +34,11 @@ pub fn read_fixed_string(buffer: &[u8], offset: usize, len: usize) -> String {
 }
 
 pub fn read_null_padded_string(buffer: &[u8]) -> String {
-    String::from_utf8_lossy(buffer)
-        .trim_end_matches('\0')
-        .to_string()
+    let end = buffer
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(buffer.len());
+    String::from_utf8_lossy(&buffer[..end]).into_owned()
 }
 
 pub fn read_null_padded_trimmed_string(buffer: &[u8]) -> String {
@@ -152,5 +154,20 @@ pub fn nintendo_region_display(region_code: u8) -> &'static str {
         b'A' => "Asia",
         b'O' => "Global",
         _ => "Unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_null_padded_string;
+
+    #[test]
+    fn null_padded_string_stops_at_first_nul() {
+        assert_eq!(read_null_padded_string(b"TITLE\0TRAILING"), "TITLE");
+    }
+
+    #[test]
+    fn null_padded_string_without_nul_keeps_full_field() {
+        assert_eq!(read_null_padded_string(b"FULL TITLE"), "FULL TITLE");
     }
 }
